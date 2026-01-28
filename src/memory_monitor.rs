@@ -195,7 +195,17 @@ fn current_process_memory() -> Option<MemoryStats> {
     process_memory(std::process::id())
 }
 
+#[cfg(target_os = "macos")]
 fn process_memory(pid: u32) -> Option<MemoryStats> {
+    mach::memory_for_pid(pid).or_else(|| process_memory_ps(pid))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn process_memory(pid: u32) -> Option<MemoryStats> {
+    process_memory_ps(pid)
+}
+
+fn process_memory_ps(pid: u32) -> Option<MemoryStats> {
     let output = Command::new("ps")
         .args(["-o", "rss=", "-o", "vsz=", "-p", &pid.to_string()])
         .output()
@@ -214,6 +224,87 @@ fn process_memory(pid: u32) -> Option<MemoryStats> {
         resident_bytes: rss_kb * 1024,
         virtual_bytes: vsz_kb * 1024,
     })
+}
+
+#[cfg(target_os = "macos")]
+mod mach {
+    use super::MemoryStats;
+    use std::mem::{size_of, MaybeUninit};
+
+    type KernReturn = i32;
+    type MachPort = u32;
+    type MachMsgTypeNumber = u32;
+    type Integer = i32;
+    type Natural = u32;
+
+    const KERN_SUCCESS: KernReturn = 0;
+    const TASK_BASIC_INFO_64: i32 = 5;
+
+    #[repr(C)]
+    #[derive(Default, Copy, Clone)]
+    struct TimeValue {
+        seconds: i32,
+        microseconds: i32,
+    }
+
+    #[repr(C)]
+    #[derive(Default, Copy, Clone)]
+    struct TaskBasicInfo64 {
+        virtual_size: u64,
+        resident_size: u64,
+        resident_size_max: u64,
+        user_time: TimeValue,
+        system_time: TimeValue,
+        policy: i32,
+        suspend_count: i32,
+    }
+
+    #[link(name = "System")]
+    extern "C" {
+        static mach_task_self_: MachPort;
+        fn task_info(
+            target_task: MachPort,
+            flavor: i32,
+            task_info_out: *mut Integer,
+            task_info_out_cnt: *mut MachMsgTypeNumber,
+        ) -> KernReturn;
+        fn task_for_pid(target_tport: MachPort, pid: i32, task: *mut MachPort) -> KernReturn;
+    }
+
+    pub fn memory_for_pid(pid: u32) -> Option<MemoryStats> {
+        let task = if pid == std::process::id() {
+            unsafe { mach_task_self_ }
+        } else {
+            let mut task: MachPort = 0;
+            let kr = unsafe { task_for_pid(unsafe { mach_task_self_ }, pid as i32, &mut task) };
+            if kr != KERN_SUCCESS {
+                return None;
+            }
+            task
+        };
+
+        let mut info = MaybeUninit::<TaskBasicInfo64>::zeroed();
+        let mut count: MachMsgTypeNumber =
+            (size_of::<TaskBasicInfo64>() / size_of::<Natural>()) as MachMsgTypeNumber;
+
+        let kr = unsafe {
+            task_info(
+                task,
+                TASK_BASIC_INFO_64,
+                info.as_mut_ptr() as *mut Integer,
+                &mut count,
+            )
+        };
+        if kr != KERN_SUCCESS {
+            return None;
+        }
+
+        let info = unsafe { info.assume_init() };
+        Some(MemoryStats {
+            resident_bytes: info.resident_size,
+            virtual_bytes: info.virtual_size,
+        })
+    }
 }
 
 #[cfg(test)]
