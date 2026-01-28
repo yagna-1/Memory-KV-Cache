@@ -1,0 +1,7 @@
+runtime = "llama.cpp"
+model = ""
+context_length = 2048
+max_tokens = 512
+threads = 4
+gpu_layers = 0
+precision = "fp16"
