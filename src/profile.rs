@@ -8,6 +8,7 @@ use crate::llm_backend::RunConfig;
 pub struct Profile {
     pub runtime: Option<String>,
     pub model: Option<String>,
+    pub warning_model: Option<String>,
     pub context_length: Option<u64>,
     pub max_tokens: Option<u32>,
     pub threads: Option<u32>,
@@ -83,6 +84,15 @@ impl Profile {
                 self.model = None;
             } else {
                 self.model = Some(trimmed.to_string());
+            }
+        }
+
+        if let Some(model) = &self.warning_model {
+            let trimmed = model.trim();
+            if trimmed.is_empty() {
+                self.warning_model = None;
+            } else {
+                self.warning_model = Some(trimmed.to_string());
             }
         }
 
@@ -223,6 +233,10 @@ fn parse_profile(contents: &str) -> Result<Profile, String> {
                 let model = parse_string(value)?;
                 profile.model = if model.is_empty() { None } else { Some(model) };
             }
+            "warning_model" => {
+                let model = parse_string(value)?;
+                profile.warning_model = if model.is_empty() { None } else { Some(model) };
+            }
             "context_length" => profile.context_length = Some(parse_u64(value)?),
             "max_tokens" => profile.max_tokens = Some(parse_u32(value)?),
             "threads" => profile.threads = Some(parse_u32(value)?),
@@ -317,6 +331,7 @@ mod tests {
         let input = r#"
             runtime = "llama"
             model = ""
+            warning_model = "small.gguf"
             context_length = 2048
             max_tokens = 128
             threads = 4
@@ -330,6 +345,7 @@ mod tests {
 
         assert_eq!(profile.runtime.as_deref(), Some("llama.cpp"));
         assert!(profile.model.is_none());
+        assert_eq!(profile.warning_model.as_deref(), Some("small.gguf"));
         assert_eq!(profile.context_length, Some(2048));
         assert_eq!(profile.max_tokens, Some(128));
         assert_eq!(profile.threads, Some(4));
@@ -358,6 +374,7 @@ mod tests {
         let input = r#"
             runtime = ""
             model = ""
+            warning_model = ""
             precision = ""
             cache_type_k = ""
             cache_type_v = ""
@@ -366,6 +383,7 @@ mod tests {
         profile.validate().unwrap();
         assert!(profile.runtime.is_none());
         assert!(profile.model.is_none());
+        assert!(profile.warning_model.is_none());
         assert!(profile.precision.is_none());
         assert!(profile.cache_type_k.is_none());
         assert!(profile.cache_type_v.is_none());
