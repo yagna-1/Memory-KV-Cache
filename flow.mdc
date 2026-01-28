@@ -1,0 +1,22 @@
+# Workflow
+1. Open `plan.md` and pick the next incomplete items that fit ~200-300 lines of work.
+2. Sync `main` locally (`git checkout main` + `git pull`).
+3. Create a feature branch from `main`.
+4. Implement the selected `plan.md` items in code and docs.
+5. Update `plan.md` checkboxes locally (do not commit `plan.md`).
+6. Verify changes with `git status` and ensure only intended files are staged.
+7. Commit changes with a clear message.
+8. Push the branch to origin.
+9. Create a PR from the branch.
+10. Watch PR checks until they complete.
+11. Merge the PR and delete the branch.
+12. Pull `main` again and continue with the next `plan.md` items.
+
+## Notes
+- Keep each PR focused on a single roadmap chunk (~200-300 lines).
+- If checks fail, fix on the same branch and re-run checks.
+- Avoid staging `plan.md` (it is tracked only locally).
+- Update docs and tests when new flags or behavior are added.
+- Capture PR URL and check status in notes.
+- Switch back to `main` after merging.
+- Continue only after checks pass.
