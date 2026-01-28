@@ -34,6 +34,7 @@ Options:
 - `--warning-context-length <n>`: restart with lower context length on warning
 - `--capture-output`: prefix stdout/stderr lines
 - `--progress`: detect progress lines (implies capture)
+- `--pressure-events`: use macOS memory pressure events
 - `--dry-run`: print command without executing
 
 Example:
