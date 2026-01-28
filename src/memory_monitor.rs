@@ -375,4 +375,17 @@ mod tests {
         handle.stop();
         assert!(counter.load(Ordering::SeqCst) > 0);
     }
+
+    #[test]
+    #[cfg(unix)]
+    fn child_pid_memory_snapshot() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("0.2")
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let stats = super::process_memory(pid).expect("child stats");
+        assert!(stats.resident_bytes > 0);
+        let _ = child.wait();
+    }
 }
