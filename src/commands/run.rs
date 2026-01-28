@@ -87,6 +87,8 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     let mut max_tokens = None;
     let mut threads = None;
     let mut gpu_layers = None;
+    let mut cache_type_k = None;
+    let mut cache_type_v = None;
     let mut profile_name = None;
     let mut profile_dir = None;
     let mut monitor = false;
@@ -120,6 +122,12 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             }
             "--threads" => {
                 threads = Some(parse_u32("--threads", &next_value("--threads", &mut iter)?)?)
+            }
+            "--cache-type-k" => {
+                cache_type_k = Some(next_value("--cache-type-k", &mut iter)?);
+            }
+            "--cache-type-v" => {
+                cache_type_v = Some(next_value("--cache-type-v", &mut iter)?);
             }
             "--gpu-layers" => {
                 gpu_layers = Some(parse_u32("--gpu-layers", &next_value("--gpu-layers", &mut iter)?)?)
@@ -186,6 +194,8 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
         max_tokens,
         threads,
         gpu_layers,
+        cache_type_k,
+        cache_type_v,
         extra_args,
     };
 
@@ -815,6 +825,8 @@ mod tests {
             max_tokens: None,
             threads: None,
             gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -859,6 +871,8 @@ mod tests {
             max_tokens: None,
             threads: None,
             gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -925,6 +939,8 @@ mod tests {
             max_tokens: None,
             threads: None,
             gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -972,6 +988,8 @@ mod tests {
             max_tokens: None,
             threads: None,
             gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -1038,6 +1056,8 @@ mod tests {
             max_tokens: None,
             threads: None,
             gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -1110,6 +1130,8 @@ mod tests {
             max_tokens: Some(256),
             threads: None,
             gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -1174,6 +1196,8 @@ OPTIONS:
   --context-length <n>  Context length (llama.cpp: -c)
   --max-tokens <n>      Max tokens to generate
   --threads <n>         Thread count
+  --cache-type-k <type> KV cache type for K (llama.cpp)
+  --cache-type-v <type> KV cache type for V (llama.cpp)
   --gpu-layers <n>      GPU layers for llama.cpp
   --profile <name>      Load profile from config directories
   --profile-dir <path>  Search this directory for profiles

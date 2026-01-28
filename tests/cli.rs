@@ -57,6 +57,20 @@ fn config_show_verbose_runs() {
 }
 
 #[test]
+fn config_show_verbose_includes_cache_types() {
+    let output = Command::new(bin())
+        .current_dir(workspace_root())
+        .args(["config", "show", "--verbose"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("cache_type_k="));
+    assert!(stdout.contains("cache_type_v="));
+}
+
+#[test]
 fn config_validate_project_profiles() {
     let status = Command::new(bin())
         .current_dir(workspace_root())
@@ -116,6 +130,29 @@ fn run_dry_run_with_profile() {
         .unwrap();
 
     assert!(status.success());
+}
+
+#[test]
+fn run_dry_run_includes_cache_types() {
+    let output = Command::new(bin())
+        .current_dir(workspace_root())
+        .args([
+            "run",
+            "--model",
+            "model.gguf",
+            "--cache-type-k",
+            "q8_0",
+            "--cache-type-v",
+            "q4_0",
+            "--dry-run",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("--cache-type-k q8_0"));
+    assert!(stdout.contains("--cache-type-v q4_0"));
 }
 
 #[test]
