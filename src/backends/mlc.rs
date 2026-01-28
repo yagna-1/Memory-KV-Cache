@@ -24,7 +24,7 @@ impl LLMRunner for MlcBackend {
 #[cfg(test)]
 mod tests {
     use super::MlcBackend;
-    use crate::llm_backend::{LLMError, RunConfig};
+    use crate::llm_backend::{LLMError, LLMRunner, RunConfig};
 
     #[test]
     fn mlc_backend_unimplemented() {

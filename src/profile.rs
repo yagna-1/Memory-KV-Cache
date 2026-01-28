@@ -278,7 +278,7 @@ fn parse_u32(value: &str) -> Result<u32, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_profile, Profile};
+    use super::parse_profile;
 
     #[test]
     fn parse_and_validate_profile() {
