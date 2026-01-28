@@ -80,8 +80,10 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     let precision = precision.unwrap_or_else(|| "fp16".to_string()).to_lowercase();
 
     if auto_ram && available_ram.is_none() {
-        available_ram = detect_available_ram()
-            .ok_or_else(|| "Failed to auto-detect available RAM".to_string())?;
+        available_ram = Some(
+            detect_available_ram()
+                .ok_or_else(|| "Failed to auto-detect available RAM".to_string())?,
+        );
     }
 
     let metadata = read_metadata(&model_path)?;
