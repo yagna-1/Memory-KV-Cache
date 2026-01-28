@@ -68,6 +68,8 @@ mod tests {
             max_tokens: None,
             threads: None,
             gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
             extra_args: vec!["--verbose".to_string()],
         };
 
@@ -87,6 +89,8 @@ mod tests {
             max_tokens: None,
             threads: None,
             gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
             extra_args: Vec::new(),
         };
 
@@ -113,6 +117,8 @@ mod tests {
             max_tokens: None,
             threads: None,
             gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
             extra_args: Vec::new(),
         };
 

@@ -4,4 +4,6 @@ context_length = 4096
 max_tokens = 1024
 threads = 8
 gpu_layers = 20
+cache_type_k = "q8_0"
+cache_type_v = "q4_0"
 precision = "fp16"

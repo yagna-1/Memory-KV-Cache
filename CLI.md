@@ -23,6 +23,8 @@ Options:
 - `--context-length <n>`: context length (llama.cpp `-c`)
 - `--max-tokens <n>`: max tokens
 - `--threads <n>`: threads count
+- `--cache-type-k <type>`: llama.cpp KV cache type for K
+- `--cache-type-v <type>`: llama.cpp KV cache type for V
 - `--gpu-layers <n>`: llama.cpp GPU layers
 - `--profile <name>`: load defaults from a profile
 - `--profile-dir <path>`: additional profile search directory
@@ -127,5 +129,7 @@ context_length = 2048
 max_tokens = 512
 threads = 4
 gpu_layers = 0
+cache_type_k = "q8_0"
+cache_type_v = "q4_0"
 precision = "fp16"
 ```

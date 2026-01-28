@@ -12,6 +12,8 @@ pub struct Profile {
     pub max_tokens: Option<u32>,
     pub threads: Option<u32>,
     pub gpu_layers: Option<u32>,
+    pub cache_type_k: Option<String>,
+    pub cache_type_v: Option<String>,
     pub precision: Option<String>,
 }
 
@@ -50,6 +52,14 @@ impl Profile {
 
         if config.gpu_layers.is_none() {
             config.gpu_layers = self.gpu_layers;
+        }
+
+        if config.cache_type_k.is_none() {
+            config.cache_type_k = self.cache_type_k.clone();
+        }
+
+        if config.cache_type_v.is_none() {
+            config.cache_type_v = self.cache_type_v.clone();
         }
 
         Ok(())
@@ -102,6 +112,24 @@ impl Profile {
                 return Err(format!("Unsupported precision in profile: {precision}"));
             } else {
                 self.precision = Some(norm);
+            }
+        }
+
+        if let Some(cache_type) = &self.cache_type_k {
+            let trimmed = cache_type.trim();
+            if trimmed.is_empty() {
+                self.cache_type_k = None;
+            } else {
+                self.cache_type_k = Some(trimmed.to_string());
+            }
+        }
+
+        if let Some(cache_type) = &self.cache_type_v {
+            let trimmed = cache_type.trim();
+            if trimmed.is_empty() {
+                self.cache_type_v = None;
+            } else {
+                self.cache_type_v = Some(trimmed.to_string());
             }
         }
 
@@ -199,6 +227,8 @@ fn parse_profile(contents: &str) -> Result<Profile, String> {
             "max_tokens" => profile.max_tokens = Some(parse_u32(value)?),
             "threads" => profile.threads = Some(parse_u32(value)?),
             "gpu_layers" => profile.gpu_layers = Some(parse_u32(value)?),
+            "cache_type_k" => profile.cache_type_k = Some(parse_string(value)?),
+            "cache_type_v" => profile.cache_type_v = Some(parse_string(value)?),
             "precision" => profile.precision = Some(parse_string(value)?),
             _ => {}
         }
@@ -279,6 +309,8 @@ fn parse_u32(value: &str) -> Result<u32, String> {
 #[cfg(test)]
 mod tests {
     use super::parse_profile;
+    use crate::llm_backend::RunConfig;
+    use std::path::PathBuf;
 
     #[test]
     fn parse_and_validate_profile() {
@@ -289,6 +321,8 @@ mod tests {
             max_tokens = 128
             threads = 4
             gpu_layers = 2
+            cache_type_k = "q8_0"
+            cache_type_v = "q4_0"
             precision = "fp16"
         "#;
         let mut profile = parse_profile(input).unwrap();
@@ -300,6 +334,8 @@ mod tests {
         assert_eq!(profile.max_tokens, Some(128));
         assert_eq!(profile.threads, Some(4));
         assert_eq!(profile.gpu_layers, Some(2));
+        assert_eq!(profile.cache_type_k.as_deref(), Some("q8_0"));
+        assert_eq!(profile.cache_type_v.as_deref(), Some("q4_0"));
         assert_eq!(profile.precision.as_deref(), Some("fp16"));
     }
 
@@ -323,11 +359,41 @@ mod tests {
             runtime = ""
             model = ""
             precision = ""
+            cache_type_k = ""
+            cache_type_v = ""
         "#;
         let mut profile = parse_profile(input).unwrap();
         profile.validate().unwrap();
         assert!(profile.runtime.is_none());
         assert!(profile.model.is_none());
         assert!(profile.precision.is_none());
+        assert!(profile.cache_type_k.is_none());
+        assert!(profile.cache_type_v.is_none());
+    }
+
+    #[test]
+    fn apply_cache_types_to_run_config() {
+        let input = r#"
+            cache_type_k = "q8_0"
+            cache_type_v = "q4_0"
+        "#;
+        let mut profile = parse_profile(input).unwrap();
+        profile.validate().unwrap();
+
+        let mut config = RunConfig {
+            runtime: "llama.cpp".to_string(),
+            model: Some(PathBuf::from("model.gguf")),
+            context_length: None,
+            max_tokens: None,
+            threads: None,
+            gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
+            extra_args: Vec::new(),
+        };
+
+        profile.apply_to_run_config(&mut config).unwrap();
+        assert_eq!(config.cache_type_k.as_deref(), Some("q8_0"));
+        assert_eq!(config.cache_type_v.as_deref(), Some("q4_0"));
     }
 }
