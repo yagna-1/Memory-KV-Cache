@@ -1,8 +1,9 @@
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::memory_monitor::{MemoryMonitor, MemoryPressureLevel, MemoryThresholds};
+use crate::memory_pressure::start_memory_pressure_listener;
 
 pub fn handle(args: Vec<String>) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
@@ -15,6 +16,7 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     let mut warning = None;
     let mut critical = None;
     let mut log_file = None;
+    let mut pressure_events = false;
 
     let mut iter = args.into_iter();
     while let Some(arg) = iter.next() {
@@ -38,10 +40,45 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
                 )?);
             }
             "--log-file" => log_file = Some(next_value("--log-file", &mut iter)?),
+            "--pressure-events" => pressure_events = true,
             other if other.starts_with('-') => {
                 return Err(format!("Unknown flag for monitor: {other}"));
             }
             _ => {}
+        }
+    }
+
+    if pressure_events {
+        if pid.is_some() {
+            return Err("--pressure-events does not support --pid".to_string());
+        }
+        let mut log = if let Some(path) = log_file {
+            Some(
+                OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&path)
+                    .map_err(|err| format!("Failed to open log file {path}: {err}"))?,
+            )
+        } else {
+            None
+        };
+        let handle = start_memory_pressure_listener()?;
+        println!("Listening for memory pressure events...");
+        loop {
+            let level = handle
+                .receiver()
+                .recv()
+                .map_err(|err| format!("Pressure listener stopped: {err}"))?;
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or_default();
+            println!("[{timestamp}] memory-pressure {level}", level = format_level(level));
+            if let Some(file) = log.as_mut() {
+                writeln!(file, "{timestamp} pressure={}", format_level(level))
+                    .map_err(|err| format!("Failed to write log: {err}"))?;
+            }
         }
     }
 
@@ -182,6 +219,7 @@ OPTIONS:
   --warning <size>        Warning threshold (e.g. 512mb)
   --critical <size>       Critical threshold (e.g. 1gb)
   --log-file <path>       Append events to a log file
+  --pressure-events       Use macOS memory pressure events
   --help                  Show this help
 "
     );

@@ -93,10 +93,16 @@ Options:
 - `--warning <size>`: warning threshold
 - `--critical <size>`: critical threshold
 - `--log-file <path>`: append events to a log file
+- `--pressure-events`: use macOS memory pressure events
 
 Example:
 ```
 llm-manager monitor --pid 12345 --warning 1gb --critical 2gb --log-file monitor.log
+```
+
+Memory pressure events (macOS):
+```
+llm-manager monitor --pressure-events --log-file pressure.log
 ```
 
 ## Profile format
