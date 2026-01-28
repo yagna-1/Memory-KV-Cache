@@ -25,6 +25,7 @@ pub struct AdjustmentParams {
 pub struct CommandSpec {
     pub program: String,
     pub args: Vec<String>,
+    pub env: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -61,13 +62,15 @@ pub trait LLMRunner {
 
     fn run(&self, config: &RunConfig) -> LLMResult<()> {
         let spec = self.build_command(config)?;
-        let status = Command::new(&spec.program)
-            .args(&spec.args)
-            .status()
-            .map_err(|err| LLMError::LaunchFailed {
-                program: spec.program.clone(),
-                source: err.to_string(),
-            })?;
+        let mut command = Command::new(&spec.program);
+        command.args(&spec.args);
+        for (key, value) in &spec.env {
+            command.env(key, value);
+        }
+        let status = command.status().map_err(|err| LLMError::LaunchFailed {
+            program: spec.program.clone(),
+            source: err.to_string(),
+        })?;
         if !status.success() {
             return Err(LLMError::ProcessExit {
                 code: status.code().unwrap_or(-1),
