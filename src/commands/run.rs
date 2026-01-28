@@ -716,6 +716,189 @@ fn format_bytes(value: u64) -> String {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    struct TestBackend {
+        program: String,
+    }
+
+    impl LLMRunner for TestBackend {
+        fn build_command(
+            &self,
+            _config: &RunConfig,
+        ) -> crate::llm_backend::LLMResult<CommandSpec> {
+            Ok(CommandSpec {
+                program: self.program.clone(),
+                args: vec!["0.2".to_string()],
+            })
+        }
+    }
+
+    #[cfg(unix)]
+    fn spawn_test_child(
+        backend: &TestBackend,
+        config: &RunConfig,
+    ) -> (Child, Option<JoinHandle<()>>, Option<JoinHandle<()>>) {
+        let spec = backend.build_command(config).unwrap();
+        spawn_child(&spec, false, false).unwrap()
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn warning_context_length_updates_config() {
+        let backend = TestBackend {
+            program: "sleep".to_string(),
+        };
+        let mut state = AdjustmentState::new();
+        let mut config = RunConfig {
+            runtime: "llama.cpp".to_string(),
+            model: Some(PathBuf::from("model.gguf")),
+            context_length: Some(1024),
+            max_tokens: None,
+            threads: None,
+            gpu_layers: None,
+            extra_args: Vec::new(),
+        };
+        let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
+
+        handle_pressure_level(
+            MemoryPressureLevel::Warning,
+            false,
+            Some(512),
+            None,
+            None,
+            None,
+            None,
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap();
+
+        assert_eq!(config.context_length, Some(512));
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn warning_context_step_reduces_multiple_times() {
+        let backend = TestBackend {
+            program: "sleep".to_string(),
+        };
+        let mut state = AdjustmentState::new();
+        let mut config = RunConfig {
+            runtime: "llama.cpp".to_string(),
+            model: Some(PathBuf::from("model.gguf")),
+            context_length: Some(768),
+            max_tokens: None,
+            threads: None,
+            gpu_layers: None,
+            extra_args: Vec::new(),
+        };
+        let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
+
+        handle_pressure_level(
+            MemoryPressureLevel::Warning,
+            false,
+            None,
+            Some(128),
+            Some(512),
+            None,
+            None,
+            None,
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap();
+        assert_eq!(config.context_length, Some(640));
+
+        handle_pressure_level(
+            MemoryPressureLevel::Warning,
+            false,
+            None,
+            Some(128),
+            Some(512),
+            None,
+            None,
+            None,
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap();
+        assert_eq!(config.context_length, Some(512));
+
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn warning_model_switch_updates_config() {
+        let backend = TestBackend {
+            program: "sleep".to_string(),
+        };
+        let mut state = AdjustmentState::new();
+        let mut config = RunConfig {
+            runtime: "llama.cpp".to_string(),
+            model: Some(PathBuf::from("big.gguf")),
+            context_length: None,
+            max_tokens: None,
+            threads: None,
+            gpu_layers: None,
+            extra_args: Vec::new(),
+        };
+        let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
+
+        handle_pressure_level(
+            MemoryPressureLevel::Warning,
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("small.gguf"),
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.model.as_ref().map(|m| m.display().to_string()),
+            Some("small.gguf".to_string())
+        );
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
 fn print_help() {
     println!(
         "USAGE:
