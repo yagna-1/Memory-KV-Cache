@@ -277,33 +277,6 @@ fn run_with_monitor(
     };
 
     let mut state = AdjustmentState::new();
-    let mut apply_level = |level: MemoryPressureLevel| -> Result<(), String> {
-        if abort_on_critical && matches!(level, MemoryPressureLevel::Critical) {
-            state.record_critical();
-            let _ = child.kill();
-            return Err("Aborted on critical memory pressure".to_string());
-        }
-        if matches!(level, MemoryPressureLevel::Warning)
-            && state.can_reduce_on_warning()
-            && warning_context_length.is_some()
-        {
-            let new_length = warning_context_length.unwrap_or(0);
-            if new_length > 0 && active_config.context_length != Some(new_length) {
-                state.record_warning();
-                let _ = child.kill();
-                join_output_threads(stdout_thread.take(), stderr_thread.take());
-                active_config.context_length = Some(new_length);
-                let spec = backend
-                    .build_command(&active_config)
-                    .map_err(|err| err.to_string())?;
-                let spawned = spawn_child(&spec, capture_output, progress)?;
-                child = spawned.0;
-                stdout_thread = spawned.1;
-                stderr_thread = spawned.2;
-            }
-        }
-        Ok(())
-    };
     loop {
         match receiver.recv_timeout(poll_interval) {
             Ok(event) => {
@@ -313,7 +286,19 @@ fn run_with_monitor(
                     format_bytes(event.stats.resident_bytes),
                     format_bytes(event.stats.virtual_bytes)
                 );
-                if let Err(err) = apply_level(event.level) {
+                if let Err(err) = handle_pressure_level(
+                    event.level,
+                    abort_on_critical,
+                    warning_context_length,
+                    &mut state,
+                    &mut active_config,
+                    backend.as_ref(),
+                    capture_output,
+                    progress,
+                    &mut child,
+                    &mut stdout_thread,
+                    &mut stderr_thread,
+                ) {
                     handle.stop();
                     join_output_threads(stdout_thread, stderr_thread);
                     return Err(err);
@@ -327,7 +312,19 @@ fn run_with_monitor(
             match pressure_handle.receiver().try_recv() {
                 Ok(level) => {
                     println!("[pressure] {}", format_level(level));
-                    if let Err(err) = apply_level(level) {
+                    if let Err(err) = handle_pressure_level(
+                        level,
+                        abort_on_critical,
+                        warning_context_length,
+                        &mut state,
+                        &mut active_config,
+                        backend.as_ref(),
+                        capture_output,
+                        progress,
+                        &mut child,
+                        &mut stdout_thread,
+                        &mut stderr_thread,
+                    ) {
                         handle.stop();
                         join_output_threads(stdout_thread, stderr_thread);
                         return Err(err);
@@ -466,6 +463,46 @@ fn join_output_threads(stdout_thread: Option<JoinHandle<()>>, stderr_thread: Opt
     if let Some(thread) = stderr_thread {
         let _ = thread.join();
     }
+}
+
+fn handle_pressure_level(
+    level: MemoryPressureLevel,
+    abort_on_critical: bool,
+    warning_context_length: Option<u32>,
+    state: &mut AdjustmentState,
+    active_config: &mut RunConfig,
+    backend: &dyn LLMRunner,
+    capture_output: bool,
+    progress: bool,
+    child: &mut Child,
+    stdout_thread: &mut Option<JoinHandle<()>>,
+    stderr_thread: &mut Option<JoinHandle<()>>,
+) -> Result<(), String> {
+    if abort_on_critical && matches!(level, MemoryPressureLevel::Critical) {
+        state.record_critical();
+        let _ = child.kill();
+        return Err("Aborted on critical memory pressure".to_string());
+    }
+    if matches!(level, MemoryPressureLevel::Warning)
+        && state.can_reduce_on_warning()
+        && warning_context_length.is_some()
+    {
+        let new_length = warning_context_length.unwrap_or(0);
+        if new_length > 0 && active_config.context_length != Some(new_length) {
+            state.record_warning();
+            let _ = child.kill();
+            join_output_threads(stdout_thread.take(), stderr_thread.take());
+            active_config.context_length = Some(new_length);
+            let spec = backend
+                .build_command(active_config)
+                .map_err(|err| err.to_string())?;
+            let spawned = spawn_child(&spec, capture_output, progress)?;
+            *child = spawned.0;
+            *stdout_thread = spawned.1;
+            *stderr_thread = spawned.2;
+        }
+    }
+    Ok(())
 }
 
 fn install_signal_handlers() {
