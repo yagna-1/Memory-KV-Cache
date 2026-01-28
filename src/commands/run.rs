@@ -2,7 +2,7 @@ use std::io::{BufRead, BufReader};
 use std::os::raw::c_int;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::RecvTimeoutError;
+use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
 use std::sync::{atomic::{AtomicBool, Ordering}, Once};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -10,6 +10,7 @@ use std::time::Duration;
 use crate::backends::{llama_cpp::LlamaCppBackend, mlc::MlcBackend, ollama::OllamaBackend, vllm::VllmBackend};
 use crate::llm_backend::{CommandSpec, LLMRunner, RunConfig};
 use crate::memory_monitor::{MemoryMonitor, MemoryPressureLevel, MemoryThresholds};
+use crate::memory_pressure::start_memory_pressure_listener;
 use crate::profile::load_profile;
 
 static SIGNAL_INIT: Once = Once::new();
@@ -72,6 +73,7 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     let mut abort_on_critical = false;
     let mut warning_context_length = None;
     let mut progress = false;
+    let mut pressure_events = false;
     let mut dry_run = false;
     let mut extra_args = Vec::new();
 
@@ -111,6 +113,7 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             }
             "--capture-output" => capture_output = true,
             "--progress" => progress = true,
+            "--pressure-events" => pressure_events = true,
             "--dry-run" => dry_run = true,
             "--" => {
                 extra_args.extend(iter);
@@ -156,6 +159,9 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     if progress {
         capture_output = true;
     }
+    if pressure_events {
+        monitor = true;
+    }
 
     if dry_run {
         let spec = backend.build_command(&config).map_err(|err| err.to_string())?;
@@ -174,6 +180,7 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             abort_on_critical,
             warning_context_length,
             progress,
+            pressure_events,
         )
     } else if capture_output {
         run_with_capture(backend, &config, progress)
@@ -239,6 +246,7 @@ fn run_with_monitor(
     abort_on_critical: bool,
     warning_context_length: Option<u32>,
     progress: bool,
+    pressure_events: bool,
 ) -> Result<(), String> {
     install_signal_handlers();
     let mut active_config = config.clone();
@@ -262,8 +270,40 @@ fn run_with_monitor(
     let monitor = MemoryMonitor::new(poll_interval, thresholds).with_pid(child.id());
     let handle = monitor.start();
     let receiver = handle.receiver();
+    let pressure_handle = if pressure_events {
+        Some(start_memory_pressure_listener()?)
+    } else {
+        None
+    };
 
     let mut state = AdjustmentState::new();
+    let mut apply_level = |level: MemoryPressureLevel| -> Result<(), String> {
+        if abort_on_critical && matches!(level, MemoryPressureLevel::Critical) {
+            state.record_critical();
+            let _ = child.kill();
+            return Err("Aborted on critical memory pressure".to_string());
+        }
+        if matches!(level, MemoryPressureLevel::Warning)
+            && state.can_reduce_on_warning()
+            && warning_context_length.is_some()
+        {
+            let new_length = warning_context_length.unwrap_or(0);
+            if new_length > 0 && active_config.context_length != Some(new_length) {
+                state.record_warning();
+                let _ = child.kill();
+                join_output_threads(stdout_thread.take(), stderr_thread.take());
+                active_config.context_length = Some(new_length);
+                let spec = backend
+                    .build_command(&active_config)
+                    .map_err(|err| err.to_string())?;
+                let spawned = spawn_child(&spec, capture_output, progress)?;
+                child = spawned.0;
+                stdout_thread = spawned.1;
+                stderr_thread = spawned.2;
+            }
+        }
+        Ok(())
+    };
     loop {
         match receiver.recv_timeout(poll_interval) {
             Ok(event) => {
@@ -273,35 +313,33 @@ fn run_with_monitor(
                     format_bytes(event.stats.resident_bytes),
                     format_bytes(event.stats.virtual_bytes)
                 );
-                if abort_on_critical && matches!(event.level, MemoryPressureLevel::Critical) {
-                    state.record_critical();
-                    let _ = child.kill();
+                if let Err(err) = apply_level(event.level) {
                     handle.stop();
                     join_output_threads(stdout_thread, stderr_thread);
-                    return Err("Aborted on critical memory pressure".to_string());
-                }
-                if matches!(event.level, MemoryPressureLevel::Warning)
-                    && state.can_reduce_on_warning()
-                    && warning_context_length.is_some()
-                {
-                    let new_length = warning_context_length.unwrap_or(0);
-                    if new_length > 0 && active_config.context_length != Some(new_length) {
-                        state.record_warning();
-                        let _ = child.kill();
-                        join_output_threads(stdout_thread, stderr_thread);
-                        active_config.context_length = Some(new_length);
-                        let spec = backend
-                            .build_command(&active_config)
-                            .map_err(|err| err.to_string())?;
-                        let spawned = spawn_child(&spec, capture_output, progress)?;
-                        child = spawned.0;
-                        stdout_thread = spawned.1;
-                        stderr_thread = spawned.2;
-                    }
+                    return Err(err);
                 }
             }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
+        }
+
+        if let Some(pressure_handle) = &pressure_handle {
+            match pressure_handle.receiver().try_recv() {
+                Ok(level) => {
+                    println!("[pressure] {}", format_level(level));
+                    if let Err(err) = apply_level(level) {
+                        handle.stop();
+                        join_output_threads(stdout_thread, stderr_thread);
+                        return Err(err);
+                    }
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    handle.stop();
+                    join_output_threads(stdout_thread, stderr_thread);
+                    return Err("Pressure listener stopped".to_string());
+                }
+            }
         }
 
         if should_terminate() {
@@ -495,6 +533,7 @@ OPTIONS:
                        Restart with lower context length on warning
   --capture-output      Capture and prefix stdout/stderr
   --progress            Detect progress lines (implies capture)
+  --pressure-events     Use macOS memory pressure events
   --dry-run             Print command without executing
   --help                Show this help
 "
