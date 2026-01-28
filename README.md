@@ -34,7 +34,7 @@ cargo build
    - `cargo run -- config init`
    - `cargo run -- config show --verbose`
    - `cargo run -- run --profile llama_cpp_safe --model /path/to/model.gguf --dry-run`
-   - `cargo run -- run --profile llama_cpp_safe --model /path/to/model.gguf --monitor --monitor-warning 1gb --monitor-critical 2gb --abort-on-critical --warning-context-length 1024 --pressure-events`
+   - `cargo run -- run --profile llama_cpp_safe --model /path/to/model.gguf --monitor --monitor-warning 1gb --monitor-critical 2gb --abort-on-critical --warning-context-length 1024 --warning-max-tokens 256 --pressure-events`
    - `cargo run -- run --profile llama_cpp_safe --model /path/to/model.gguf --capture-output --progress`
    - `cargo run -- monitor --interval-ms 1000`
 
