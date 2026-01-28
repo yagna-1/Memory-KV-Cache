@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -53,6 +54,50 @@ fn config_show_verbose_runs() {
         .unwrap();
 
     assert!(status.success());
+}
+
+#[test]
+fn config_validate_project_profiles() {
+    let status = Command::new(bin())
+        .current_dir(workspace_root())
+        .args(["config", "validate", "--project"])
+        .status()
+        .unwrap();
+
+    assert!(status.success());
+}
+
+#[test]
+fn config_validate_dir_failure() {
+    let temp_dir = unique_temp_dir("llm_manager_validate");
+    fs::create_dir_all(&temp_dir).unwrap();
+    let bad_path = temp_dir.join("bad.toml");
+    let mut file = fs::File::create(&bad_path).unwrap();
+    writeln!(file, "threads = 0").unwrap();
+
+    let status = Command::new(bin())
+        .current_dir(workspace_root())
+        .args(["config", "validate", "--dir"])
+        .arg(&temp_dir)
+        .status()
+        .unwrap();
+
+    assert!(!status.success());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn config_validate_json_output() {
+    let output = Command::new(bin())
+        .current_dir(workspace_root())
+        .args(["config", "validate", "--project", "--json"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\"results\""));
+    assert!(stdout.contains("\"summary\""));
 }
 
 #[test]
