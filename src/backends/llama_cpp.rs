@@ -46,6 +46,16 @@ impl LLMRunner for LlamaCppBackend {
             args.push(gpu_layers.to_string());
         }
 
+        if let Some(cache_type_k) = &config.cache_type_k {
+            args.push("--cache-type-k".to_string());
+            args.push(cache_type_k.to_string());
+        }
+
+        if let Some(cache_type_v) = &config.cache_type_v {
+            args.push("--cache-type-v".to_string());
+            args.push(cache_type_v.to_string());
+        }
+
         args.extend(config.extra_args.clone());
 
         Ok(CommandSpec {
@@ -72,6 +82,8 @@ mod tests {
             max_tokens: Some(128),
             threads: Some(4),
             gpu_layers: Some(10),
+            cache_type_k: Some("q8_0".to_string()),
+            cache_type_v: Some("q4_0".to_string()),
             extra_args: vec!["--foo".to_string()],
         };
 
@@ -90,8 +102,32 @@ mod tests {
                 "4",
                 "--gpu-layers",
                 "10",
+                "--cache-type-k",
+                "q8_0",
+                "--cache-type-v",
+                "q4_0",
                 "--foo",
             ]
         );
+    }
+
+    #[test]
+    fn omits_cache_type_flags_when_unset() {
+        let backend = LlamaCppBackend::default();
+        let config = RunConfig {
+            runtime: "llama.cpp".to_string(),
+            model: Some(PathBuf::from("model.gguf")),
+            context_length: None,
+            max_tokens: None,
+            threads: None,
+            gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
+            extra_args: Vec::new(),
+        };
+
+        let spec = backend.build_command(&config).unwrap();
+        assert!(!spec.args.contains(&"--cache-type-k".to_string()));
+        assert!(!spec.args.contains(&"--cache-type-v".to_string()));
     }
 }
