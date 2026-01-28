@@ -68,6 +68,7 @@ fn config_show_verbose_includes_cache_types() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("cache_type_k="));
     assert!(stdout.contains("cache_type_v="));
+    assert!(stdout.contains("warning_model="));
 }
 
 #[test]

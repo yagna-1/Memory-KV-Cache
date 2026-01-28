@@ -201,6 +201,9 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
 
     if let Some(profile_name) = profile_name {
         let (profile, _path) = load_profile(&profile_name, profile_dir.as_deref())?;
+        if warning_model.is_none() {
+            warning_model = profile.warning_model.clone();
+        }
         profile.apply_to_run_config(&mut config)?;
     }
 
