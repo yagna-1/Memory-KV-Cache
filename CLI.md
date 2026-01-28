@@ -33,6 +33,8 @@ Options:
 - `--abort-on-critical`: stop runtime on critical pressure
 - `--warning-context-length <n>`: restart with lower context length on warning
 - `--warning-max-tokens <n>`: restart with lower max tokens on warning
+- `--warning-threads <n>`: restart with fewer threads on warning
+- `--warning-gpu-layers <n>`: restart with fewer GPU layers on warning
 - `--capture-output`: prefix stdout/stderr lines
 - `--progress`: detect progress lines (implies capture)
 - `--pressure-events`: use macOS memory pressure events
