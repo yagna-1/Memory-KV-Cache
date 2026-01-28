@@ -1,4 +1,7 @@
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::Receiver;
+
+#[cfg(target_os = "macos")]
+use std::sync::mpsc;
 
 use crate::memory_monitor::MemoryPressureLevel;
 
