@@ -81,11 +81,13 @@ Options:
 - `show`: list profile files (`--verbose` prints values)
 - `edit`: print profile directory and editor hint
 - `init`: copy default profiles into `~/.llm-manager/config` (`--force` overwrites)
+- `validate`: validate profiles (`--json`, `--user`, `--project`, `--dir <path>`)
 
 Example:
 ```
 llm-manager config init
 llm-manager config show --verbose
+llm-manager config validate --project --json
 ```
 
 ## monitor
