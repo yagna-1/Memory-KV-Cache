@@ -73,6 +73,8 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     let mut abort_on_critical = false;
     let mut warning_context_length = None;
     let mut warning_max_tokens = None;
+    let mut warning_threads = None;
+    let mut warning_gpu_layers = None;
     let mut progress = false;
     let mut pressure_events = false;
     let mut dry_run = false;
@@ -115,6 +117,14 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             "--warning-max-tokens" => {
                 warning_max_tokens =
                     Some(parse_u32("--warning-max-tokens", &next_value("--warning-max-tokens", &mut iter)?)?)
+            }
+            "--warning-threads" => {
+                warning_threads =
+                    Some(parse_u32("--warning-threads", &next_value("--warning-threads", &mut iter)?)?)
+            }
+            "--warning-gpu-layers" => {
+                warning_gpu_layers =
+                    Some(parse_u32("--warning-gpu-layers", &next_value("--warning-gpu-layers", &mut iter)?)?)
             }
             "--capture-output" => capture_output = true,
             "--progress" => progress = true,
@@ -185,6 +195,8 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             abort_on_critical,
             warning_context_length,
             warning_max_tokens,
+            warning_threads,
+            warning_gpu_layers,
             progress,
             pressure_events,
         )
@@ -252,6 +264,8 @@ fn run_with_monitor(
     abort_on_critical: bool,
     warning_context_length: Option<u32>,
     warning_max_tokens: Option<u32>,
+    warning_threads: Option<u32>,
+    warning_gpu_layers: Option<u32>,
     progress: bool,
     pressure_events: bool,
 ) -> Result<(), String> {
@@ -298,6 +312,8 @@ fn run_with_monitor(
                     abort_on_critical,
                     warning_context_length,
                     warning_max_tokens,
+                    warning_threads,
+                    warning_gpu_layers,
                     &mut state,
                     &mut active_config,
                     backend.as_ref(),
@@ -325,6 +341,8 @@ fn run_with_monitor(
                         abort_on_critical,
                         warning_context_length,
                         warning_max_tokens,
+                        warning_threads,
+                        warning_gpu_layers,
                         &mut state,
                         &mut active_config,
                         backend.as_ref(),
@@ -479,6 +497,8 @@ fn handle_pressure_level(
     abort_on_critical: bool,
     warning_context_length: Option<u32>,
     warning_max_tokens: Option<u32>,
+    warning_threads: Option<u32>,
+    warning_gpu_layers: Option<u32>,
     state: &mut AdjustmentState,
     active_config: &mut RunConfig,
     backend: &dyn LLMRunner,
@@ -523,6 +543,44 @@ fn handle_pressure_level(
             let _ = child.kill();
             join_output_threads(stdout_thread.take(), stderr_thread.take());
             active_config.max_tokens = Some(new_max);
+            let spec = backend
+                .build_command(active_config)
+                .map_err(|err| err.to_string())?;
+            let spawned = spawn_child(&spec, capture_output, progress)?;
+            *child = spawned.0;
+            *stdout_thread = spawned.1;
+            *stderr_thread = spawned.2;
+        }
+    }
+    if matches!(level, MemoryPressureLevel::Warning)
+        && state.can_reduce_on_warning()
+        && warning_threads.is_some()
+    {
+        let new_threads = warning_threads.unwrap_or(0);
+        if new_threads > 0 && active_config.threads != Some(new_threads) {
+            state.record_warning();
+            let _ = child.kill();
+            join_output_threads(stdout_thread.take(), stderr_thread.take());
+            active_config.threads = Some(new_threads);
+            let spec = backend
+                .build_command(active_config)
+                .map_err(|err| err.to_string())?;
+            let spawned = spawn_child(&spec, capture_output, progress)?;
+            *child = spawned.0;
+            *stdout_thread = spawned.1;
+            *stderr_thread = spawned.2;
+        }
+    }
+    if matches!(level, MemoryPressureLevel::Warning)
+        && state.can_reduce_on_warning()
+        && warning_gpu_layers.is_some()
+    {
+        let new_layers = warning_gpu_layers.unwrap_or(0);
+        if new_layers > 0 && active_config.gpu_layers != Some(new_layers) {
+            state.record_warning();
+            let _ = child.kill();
+            join_output_threads(stdout_thread.take(), stderr_thread.take());
+            active_config.gpu_layers = Some(new_layers);
             let spec = backend
                 .build_command(active_config)
                 .map_err(|err| err.to_string())?;
@@ -600,6 +658,10 @@ OPTIONS:
                        Restart with lower context length on warning
   --warning-max-tokens <n>
                        Restart with lower max tokens on warning
+  --warning-threads <n>
+                       Restart with fewer threads on warning
+  --warning-gpu-layers <n>
+                       Restart with fewer GPU layers on warning
   --capture-output      Capture and prefix stdout/stderr
   --progress            Detect progress lines (implies capture)
   --pressure-events     Use macOS memory pressure events
