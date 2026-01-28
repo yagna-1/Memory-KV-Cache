@@ -15,7 +15,8 @@ DispatchSource + Mach integrations.
 - `src/profile.rs`: profile parsing and validation
 
 ## Memory monitoring approach
-The monitor polls process memory via `ps` and maps RSS to warning/critical thresholds. Each poll
+The monitor polls process memory via Mach `task_info` on macOS with a `ps` fallback and maps RSS to
+warning/critical thresholds. Each poll
 produces a `MemoryEvent`, which is:
 - emitted over a channel for consumers (`monitor` command, `run --monitor`)
 - stored in a bounded in-memory history buffer

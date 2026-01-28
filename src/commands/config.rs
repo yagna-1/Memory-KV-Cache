@@ -14,7 +14,7 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     let mut iter = args.into_iter();
     let subcommand = iter.next().unwrap_or_else(|| "show".to_string());
     let rest: Vec<String> = iter.collect();
-    match subcommand {
+    match subcommand.as_str() {
         "show" => show_profiles(rest),
         "edit" => edit_profiles(),
         "init" => init_profiles(rest),
