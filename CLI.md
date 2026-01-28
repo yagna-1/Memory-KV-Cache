@@ -32,6 +32,8 @@ Options:
 - `--monitor-critical <size>`: critical threshold (e.g. `1gb`)
 - `--abort-on-critical`: stop runtime on critical pressure
 - `--warning-context-length <n>`: restart with lower context length on warning
+- `--warning-context-step <n>`: reduce context length by step on warning
+- `--warning-context-min <n>`: minimum context length for step reduction
 - `--warning-max-tokens <n>`: restart with lower max tokens on warning
 - `--warning-threads <n>`: restart with fewer threads on warning
 - `--warning-gpu-layers <n>`: restart with fewer GPU layers on warning

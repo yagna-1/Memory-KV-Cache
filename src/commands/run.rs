@@ -46,8 +46,8 @@ impl AdjustmentState {
         self.critical_triggered = true;
     }
 
-    fn can_reduce_on_warning(&self) -> bool {
-        !self.warning_applied
+    fn can_reduce_on_warning(&self, allow_repeat: bool) -> bool {
+        allow_repeat || !self.warning_applied
     }
 }
 
@@ -72,6 +72,8 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     let mut capture_output = false;
     let mut abort_on_critical = false;
     let mut warning_context_length = None;
+    let mut warning_context_step = None;
+    let mut warning_context_min = None;
     let mut warning_max_tokens = None;
     let mut warning_threads = None;
     let mut warning_gpu_layers = None;
@@ -113,6 +115,14 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             "--warning-context-length" => {
                 warning_context_length =
                     Some(parse_u32("--warning-context-length", &next_value("--warning-context-length", &mut iter)?)?)
+            }
+            "--warning-context-step" => {
+                warning_context_step =
+                    Some(parse_u32("--warning-context-step", &next_value("--warning-context-step", &mut iter)?)?)
+            }
+            "--warning-context-min" => {
+                warning_context_min =
+                    Some(parse_u32("--warning-context-min", &next_value("--warning-context-min", &mut iter)?)?)
             }
             "--warning-max-tokens" => {
                 warning_max_tokens =
@@ -194,6 +204,8 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             capture_output,
             abort_on_critical,
             warning_context_length,
+            warning_context_step,
+            warning_context_min,
             warning_max_tokens,
             warning_threads,
             warning_gpu_layers,
@@ -263,6 +275,8 @@ fn run_with_monitor(
     capture_output: bool,
     abort_on_critical: bool,
     warning_context_length: Option<u32>,
+    warning_context_step: Option<u32>,
+    warning_context_min: Option<u32>,
     warning_max_tokens: Option<u32>,
     warning_threads: Option<u32>,
     warning_gpu_layers: Option<u32>,
@@ -311,6 +325,8 @@ fn run_with_monitor(
                     event.level,
                     abort_on_critical,
                     warning_context_length,
+                    warning_context_step,
+                    warning_context_min,
                     warning_max_tokens,
                     warning_threads,
                     warning_gpu_layers,
@@ -340,6 +356,8 @@ fn run_with_monitor(
                         level,
                         abort_on_critical,
                         warning_context_length,
+                        warning_context_step,
+                        warning_context_min,
                         warning_max_tokens,
                         warning_threads,
                         warning_gpu_layers,
@@ -496,6 +514,8 @@ fn handle_pressure_level(
     level: MemoryPressureLevel,
     abort_on_critical: bool,
     warning_context_length: Option<u32>,
+    warning_context_step: Option<u32>,
+    warning_context_min: Option<u32>,
     warning_max_tokens: Option<u32>,
     warning_threads: Option<u32>,
     warning_gpu_layers: Option<u32>,
@@ -514,7 +534,7 @@ fn handle_pressure_level(
         return Err("Aborted on critical memory pressure".to_string());
     }
     if matches!(level, MemoryPressureLevel::Warning)
-        && state.can_reduce_on_warning()
+        && state.can_reduce_on_warning(false)
         && warning_context_length.is_some()
     {
         let new_length = warning_context_length.unwrap_or(0);
@@ -534,7 +554,35 @@ fn handle_pressure_level(
         }
     }
     if matches!(level, MemoryPressureLevel::Warning)
-        && state.can_reduce_on_warning()
+        && state.can_reduce_on_warning(true)
+        && warning_context_step.is_some()
+    {
+        let step = warning_context_step.unwrap_or(0);
+        let min = warning_context_min.unwrap_or(1).max(1);
+        if step > 0 {
+            if let Some(current) = active_config.context_length {
+                if current > min {
+                    let target = current.saturating_sub(step).max(min);
+                    if target != current {
+                        state.record_warning();
+                        let _ = child.kill();
+                        join_output_threads(stdout_thread.take(), stderr_thread.take());
+                        active_config.context_length = Some(target);
+                        let spec = backend
+                            .build_command(active_config)
+                            .map_err(|err| err.to_string())?;
+                        let spawned = spawn_child(&spec, capture_output, progress)?;
+                        *child = spawned.0;
+                        *stdout_thread = spawned.1;
+                        *stderr_thread = spawned.2;
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+    if matches!(level, MemoryPressureLevel::Warning)
+        && state.can_reduce_on_warning(false)
         && warning_max_tokens.is_some()
     {
         let new_max = warning_max_tokens.unwrap_or(0);
@@ -553,7 +601,7 @@ fn handle_pressure_level(
         }
     }
     if matches!(level, MemoryPressureLevel::Warning)
-        && state.can_reduce_on_warning()
+        && state.can_reduce_on_warning(false)
         && warning_threads.is_some()
     {
         let new_threads = warning_threads.unwrap_or(0);
@@ -572,7 +620,7 @@ fn handle_pressure_level(
         }
     }
     if matches!(level, MemoryPressureLevel::Warning)
-        && state.can_reduce_on_warning()
+        && state.can_reduce_on_warning(false)
         && warning_gpu_layers.is_some()
     {
         let new_layers = warning_gpu_layers.unwrap_or(0);
@@ -656,6 +704,10 @@ OPTIONS:
   --abort-on-critical   Stop the runtime on critical pressure
   --warning-context-length <n>
                        Restart with lower context length on warning
+  --warning-context-step <n>
+                       Reduce context length by step on warning
+  --warning-context-min <n>
+                       Minimum context length for step reduction
   --warning-max-tokens <n>
                        Restart with lower max tokens on warning
   --warning-threads <n>
