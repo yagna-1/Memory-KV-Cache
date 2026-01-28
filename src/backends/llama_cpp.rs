@@ -51,6 +51,7 @@ impl LLMRunner for LlamaCppBackend {
         Ok(CommandSpec {
             program: self.binary.clone(),
             args,
+            env: Vec::new(),
         })
     }
 }

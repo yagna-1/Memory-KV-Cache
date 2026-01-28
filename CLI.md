@@ -48,6 +48,8 @@ Example:
 llm-manager run --profile llama_cpp_safe --model /path/to/model.gguf --monitor --abort-on-critical
 ```
 
+Note: for Ollama, `--context-length` sets the `OLLAMA_CONTEXT_LENGTH` environment variable. If the model is a local Modelfile, `PARAMETER num_ctx` is used as a fallback when `--context-length` is omitted.
+
 ## kv-inspect
 ```
 llm-manager kv-inspect --model model.gguf [options]
