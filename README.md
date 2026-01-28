@@ -65,6 +65,7 @@ config/
 - Memory monitoring uses Mach `task_info` on macOS with a `ps` fallback.
 - Memory pressure events are available via `monitor --pressure-events` on macOS.
 - Ollama context length uses `OLLAMA_CONTEXT_LENGTH` when `--context-length` is provided and falls back to Modelfile `PARAMETER num_ctx`.
+- Normal pressure restores the baseline run configuration after warning adjustments.
 - See `plan.md` for detailed roadmap.
 
 ## Docs
