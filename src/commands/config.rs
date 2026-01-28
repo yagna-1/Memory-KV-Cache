@@ -18,6 +18,7 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
         "show" => show_profiles(rest),
         "edit" => edit_profiles(),
         "init" => init_profiles(rest),
+        "validate" => validate_profiles(rest),
         other => Err(format!("Unknown config subcommand: {other}")),
     }
 }
@@ -103,6 +104,142 @@ fn init_profiles(args: Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug)]
+struct ValidationItem {
+    name: String,
+    status: &'static str,
+    error: Option<String>,
+}
+
+fn validate_profiles(args: Vec<String>) -> Result<(), String> {
+    let mut json = false;
+    let mut use_user = false;
+    let mut use_project = false;
+    let mut dir_override: Option<PathBuf> = None;
+
+    let mut iter = args.into_iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--json" => json = true,
+            "--user" => use_user = true,
+            "--project" => use_project = true,
+            "--dir" => {
+                let dir = next_value("--dir", &mut iter)?;
+                dir_override = Some(PathBuf::from(dir));
+            }
+            other => return Err(format!("Unknown flag for config validate: {other}")),
+        }
+    }
+
+    if dir_override.is_some() && (use_user || use_project) {
+        return Err("Do not combine --dir with --user/--project".to_string());
+    }
+
+    let dirs = if let Some(dir) = dir_override {
+        vec![dir]
+    } else {
+        if !use_user && !use_project {
+            use_user = true;
+            use_project = true;
+        }
+        let mut dirs = Vec::new();
+        if use_user {
+            dirs.push(default_profile_dir()?);
+        }
+        if use_project {
+            dirs.push(project_profile_dir()?);
+        }
+        dirs
+    };
+
+    let mut results = Vec::new();
+    for dir in dirs {
+        if !dir.exists() {
+            continue;
+        }
+        let entries = fs::read_dir(&dir)
+            .map_err(|err| format!("Failed to read {}: {err}", dir.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|err| format!("Failed to read profile entry: {err}"))?;
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("toml") {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let result = match load_profile(&path.to_string_lossy(), None) {
+                Ok(_) => ValidationItem {
+                    name,
+                    status: "ok",
+                    error: None,
+                },
+                Err(err) => ValidationItem {
+                    name,
+                    status: "error",
+                    error: Some(err),
+                },
+            };
+            results.push(result);
+        }
+    }
+
+    let total = results.len();
+    let failures = results.iter().filter(|r| r.status == "error").count();
+    let ok_count = total.saturating_sub(failures);
+
+    if json {
+        let mut out = String::new();
+        out.push('{');
+        out.push_str("\"results\":[");
+        for (idx, item) in results.iter().enumerate() {
+            if idx > 0 {
+                out.push(',');
+            }
+            out.push('{');
+            push_json_field(&mut out, "name", &item.name, true);
+            push_json_field(&mut out, "status", item.status, true);
+            if let Some(err) = &item.error {
+                push_json_field(&mut out, "error", err, true);
+            }
+            if out.ends_with(',') {
+                out.pop();
+            }
+            out.push('}');
+        }
+        out.push_str("],");
+        out.push_str("\"summary\":{");
+        push_json_field(&mut out, "total", &total.to_string(), false);
+        push_json_field(&mut out, "ok", &ok_count.to_string(), false);
+        push_json_field(&mut out, "failed", &failures.to_string(), false);
+        if out.ends_with(',') {
+            out.pop();
+        }
+        out.push_str("}}");
+        println!("{out}");
+    } else {
+        if total == 0 {
+            println!("No profiles found to validate.");
+        } else {
+            println!("Validated {total} profiles (ok {ok_count}, failed {failures}).");
+        }
+        if failures > 0 {
+            println!("Failures:");
+            for item in results.iter().filter(|r| r.status == "error") {
+                let err = item.error.as_deref().unwrap_or("unknown error");
+                println!(" - {}: {err}", item.name);
+            }
+        }
+    }
+
+    if failures > 0 {
+        return Err("Profile validation failed".to_string());
+    }
+    Ok(())
+}
+
 fn default_profile_dir() -> Result<PathBuf, String> {
     let home = env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
     Ok(PathBuf::from(home).join(".llm-manager").join("config"))
@@ -158,21 +295,61 @@ fn format_opt<T: Display>(value: Option<T>) -> String {
     value.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string())
 }
 
+fn next_value(flag: &str, iter: &mut impl Iterator<Item = String>) -> Result<String, String> {
+    iter.next()
+        .ok_or_else(|| format!("Missing value for {flag}"))
+}
+
+fn push_json_field(out: &mut String, key: &str, value: &str, quoted: bool) {
+    out.push('"');
+    out.push_str(&escape_json(key));
+    out.push_str("\":");
+    if quoted {
+        out.push('"');
+        out.push_str(&escape_json(value));
+        out.push('"');
+    } else {
+        out.push_str(value);
+    }
+    out.push(',');
+}
+
+fn escape_json(input: &str) -> String {
+    input
+        .chars()
+        .flat_map(|c| match c {
+            '"' => "\\\"".chars().collect::<Vec<_>>(),
+            '\\' => "\\\\".chars().collect::<Vec<_>>(),
+            '\n' => "\\n".chars().collect::<Vec<_>>(),
+            '\r' => "\\r".chars().collect::<Vec<_>>(),
+            '\t' => "\\t".chars().collect::<Vec<_>>(),
+            other => vec![other],
+        })
+        .collect()
+}
+
 fn print_help() {
     println!(
         "USAGE:
-  llm-manager config [show|edit|init]
+  llm-manager config [show|edit|init|validate]
 
 SUBCOMMANDS:
   show   List profile files
   edit   Print profile directory and editor hint
   init   Copy default profiles to user config dir
+  validate  Validate profiles for correctness
 
 INIT OPTIONS:
   --force   Overwrite existing profiles
 
 SHOW OPTIONS:
   --verbose   Print profile values
+
+VALIDATE OPTIONS:
+  --json      Output JSON results
+  --user      Validate user profiles only
+  --project   Validate project profiles only
+  --dir <path> Validate profiles in a specific directory
 "
     );
 }
