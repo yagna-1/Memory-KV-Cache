@@ -4,6 +4,7 @@ mod memory_monitor;
 mod memory_pressure;
 mod backends;
 mod gguf;
+mod ollama_config;
 mod profile;
 
 use std::env;

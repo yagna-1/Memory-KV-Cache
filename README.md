@@ -64,6 +64,7 @@ config/
 - Dependency additions are deferred until `cargo` is available in this environment.
 - Memory monitoring uses Mach `task_info` on macOS with a `ps` fallback.
 - Memory pressure events are available via `monitor --pressure-events` on macOS.
+- Ollama context length uses `OLLAMA_CONTEXT_LENGTH` when `--context-length` is provided and falls back to Modelfile `PARAMETER num_ctx`.
 - See `plan.md` for detailed roadmap.
 
 ## Docs
