@@ -388,4 +388,31 @@ mod tests {
         assert!(stats.resident_bytes > 0);
         let _ = child.wait();
     }
+
+    #[test]
+    #[cfg(unix)]
+    fn monitor_emits_events_for_child() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("0.3")
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let thresholds = MemoryThresholds {
+            warning_bytes: 0,
+            critical_bytes: u64::MAX,
+        };
+        let monitor = super::MemoryMonitor::new(Duration::from_millis(10), thresholds)
+            .with_pid(pid)
+            .with_history_limit(2);
+        let handle = monitor.start();
+
+        let event = handle
+            .receiver()
+            .recv_timeout(Duration::from_millis(100))
+            .expect("event");
+        assert!(matches!(event.level, MemoryPressureLevel::Warning));
+
+        handle.stop();
+        let _ = child.wait();
+    }
 }

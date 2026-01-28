@@ -268,10 +268,11 @@ fn list_profile_files(profile_dir: &PathBuf, verbose: bool) -> Result<(), String
             if verbose {
                 let (profile, _) = load_profile(&path.to_string_lossy(), None)?;
                 println!(
-                    " - {} (runtime={}, model={}, context_length={}, max_tokens={}, threads={}, gpu_layers={}, cache_type_k={}, cache_type_v={}, precision={})",
+                    " - {} (runtime={}, model={}, warning_model={}, context_length={}, max_tokens={}, threads={}, gpu_layers={}, cache_type_k={}, cache_type_v={}, precision={})",
                     name,
                     format_opt(profile.runtime.as_deref()),
                     format_opt(profile.model.as_deref()),
+                    format_opt(profile.warning_model.as_deref()),
                     format_opt(profile.context_length),
                     format_opt(profile.max_tokens),
                     format_opt(profile.threads),

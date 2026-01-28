@@ -73,3 +73,5 @@ config/
 - `CLI.md` for command reference and examples
 - `ARCHITECTURE.md` for system overview
 - `DEVELOPER_GUIDE.md` for build/test and backend notes
+- `RUNTIME_SUPPORT.md` for runtime research and decisions
+- `flow.mdc` for the iteration workflow

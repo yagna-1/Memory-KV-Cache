@@ -125,6 +125,7 @@ Profiles are simple key/value TOML files. Supported fields:
 ```
 runtime = "llama.cpp"
 model = "/path/to/model.gguf"
+warning_model = "/path/to/smaller.gguf"
 context_length = 2048
 max_tokens = 512
 threads = 4
