@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn bin() -> String {
     env!("CARGO_BIN_EXE_llm-manager").to_string()
@@ -82,4 +82,36 @@ fn kv_inspect_help_runs() {
         .unwrap();
 
     assert!(status.success());
+}
+
+#[test]
+fn monitor_writes_log_file() {
+    let temp_dir = unique_temp_dir("llm_manager_monitor");
+    fs::create_dir_all(&temp_dir).unwrap();
+    let log_path = temp_dir.join("monitor.log");
+
+    let mut child = Command::new(bin())
+        .current_dir(workspace_root())
+        .args([
+            "monitor",
+            "--interval-ms",
+            "50",
+            "--warning",
+            "1",
+            "--critical",
+            "2",
+            "--log-file",
+        ])
+        .arg(&log_path)
+        .spawn()
+        .unwrap();
+
+    std::thread::sleep(Duration::from_millis(200));
+    let _ = child.kill();
+    let _ = child.wait();
+
+    let contents = fs::read_to_string(&log_path).unwrap_or_default();
+    assert!(!contents.trim().is_empty());
+
+    let _ = fs::remove_dir_all(&temp_dir);
 }
