@@ -458,6 +458,9 @@ fn spawn_child(
 ) -> Result<(Child, Option<JoinHandle<()>>, Option<JoinHandle<()>>), String> {
     let mut command = Command::new(&spec.program);
     command.args(&spec.args);
+    for (key, value) in &spec.env {
+        command.env(key, value);
+    }
     if capture_output {
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
     }
@@ -733,6 +736,7 @@ mod tests {
             Ok(CommandSpec {
                 program: self.program.clone(),
                 args: vec!["0.2".to_string()],
+                env: Vec::new(),
             })
         }
     }
