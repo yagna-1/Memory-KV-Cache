@@ -43,6 +43,9 @@ Options:
 - `--pressure-events`: use macOS memory pressure events
 - `--dry-run`: print command without executing
 
+Notes:
+- When pressure returns to normal, the last baseline config is restored.
+
 Example:
 ```
 llm-manager run --profile llama_cpp_safe --model /path/to/model.gguf --monitor --abort-on-critical

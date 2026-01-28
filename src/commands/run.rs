@@ -28,6 +28,8 @@ const SIGTERM: c_int = 15;
 struct AdjustmentState {
     warning_applied: bool,
     critical_triggered: bool,
+    adjusted: bool,
+    baseline_config: Option<RunConfig>,
 }
 
 impl AdjustmentState {
@@ -35,6 +37,8 @@ impl AdjustmentState {
         Self {
             warning_applied: false,
             critical_triggered: false,
+            adjusted: false,
+            baseline_config: None,
         }
     }
 
@@ -44,6 +48,26 @@ impl AdjustmentState {
 
     fn record_critical(&mut self) {
         self.critical_triggered = true;
+    }
+
+    fn record_baseline(&mut self, config: &RunConfig) {
+        if self.baseline_config.is_none() {
+            self.baseline_config = Some(config.clone());
+        }
+    }
+
+    fn mark_adjusted(&mut self) {
+        self.adjusted = true;
+    }
+
+    fn take_restore_config(&mut self) -> Option<RunConfig> {
+        if !self.adjusted {
+            return None;
+        }
+        self.adjusted = false;
+        self.warning_applied = false;
+        self.critical_triggered = false;
+        self.baseline_config.take()
     }
 
     fn can_reduce_on_warning(&self, allow_repeat: bool) -> bool {
@@ -543,13 +567,30 @@ fn handle_pressure_level(
         let _ = child.kill();
         return Err("Aborted on critical memory pressure".to_string());
     }
+    if matches!(level, MemoryPressureLevel::Normal) {
+        if let Some(baseline) = state.take_restore_config() {
+            let _ = child.kill();
+            join_output_threads(stdout_thread.take(), stderr_thread.take());
+            *active_config = baseline;
+            let spec = backend
+                .build_command(active_config)
+                .map_err(|err| err.to_string())?;
+            let spawned = spawn_child(&spec, capture_output, progress)?;
+            *child = spawned.0;
+            *stdout_thread = spawned.1;
+            *stderr_thread = spawned.2;
+        }
+        return Ok(());
+    }
     if matches!(level, MemoryPressureLevel::Warning)
         && state.can_reduce_on_warning(false)
         && warning_context_length.is_some()
     {
         let new_length = warning_context_length.unwrap_or(0);
         if new_length > 0 && active_config.context_length != Some(new_length) {
+            state.record_baseline(active_config);
             state.record_warning();
+            state.mark_adjusted();
             let _ = child.kill();
             join_output_threads(stdout_thread.take(), stderr_thread.take());
             active_config.context_length = Some(new_length);
@@ -574,7 +615,9 @@ fn handle_pressure_level(
                 if current > min {
                     let target = current.saturating_sub(step).max(min);
                     if target != current {
+                        state.record_baseline(active_config);
                         state.record_warning();
+                        state.mark_adjusted();
                         let _ = child.kill();
                         join_output_threads(stdout_thread.take(), stderr_thread.take());
                         active_config.context_length = Some(target);
@@ -597,7 +640,9 @@ fn handle_pressure_level(
     {
         let new_max = warning_max_tokens.unwrap_or(0);
         if new_max > 0 && active_config.max_tokens != Some(new_max) {
+            state.record_baseline(active_config);
             state.record_warning();
+            state.mark_adjusted();
             let _ = child.kill();
             join_output_threads(stdout_thread.take(), stderr_thread.take());
             active_config.max_tokens = Some(new_max);
@@ -616,7 +661,9 @@ fn handle_pressure_level(
     {
         let new_threads = warning_threads.unwrap_or(0);
         if new_threads > 0 && active_config.threads != Some(new_threads) {
+            state.record_baseline(active_config);
             state.record_warning();
+            state.mark_adjusted();
             let _ = child.kill();
             join_output_threads(stdout_thread.take(), stderr_thread.take());
             active_config.threads = Some(new_threads);
@@ -635,7 +682,9 @@ fn handle_pressure_level(
     {
         let new_layers = warning_gpu_layers.unwrap_or(0);
         if new_layers > 0 && active_config.gpu_layers != Some(new_layers) {
+            state.record_baseline(active_config);
             state.record_warning();
+            state.mark_adjusted();
             let _ = child.kill();
             join_output_threads(stdout_thread.take(), stderr_thread.take());
             active_config.gpu_layers = Some(new_layers);
@@ -660,7 +709,9 @@ fn handle_pressure_level(
                 .map(|m| m.display().to_string())
                 .unwrap_or_default();
             if current != new_model {
+                state.record_baseline(active_config);
                 state.record_warning();
+                state.mark_adjusted();
                 let _ = child.kill();
                 join_output_threads(stdout_thread.take(), stderr_thread.take());
                 active_config.model = Some(std::path::PathBuf::from(new_model));
@@ -903,6 +954,210 @@ mod tests {
             config.model.as_ref().map(|m| m.display().to_string()),
             Some("small.gguf".to_string())
         );
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn normal_restores_baseline_config() {
+        let backend = TestBackend {
+            program: "sleep".to_string(),
+        };
+        let mut state = AdjustmentState::new();
+        let mut config = RunConfig {
+            runtime: "llama.cpp".to_string(),
+            model: Some(PathBuf::from("model.gguf")),
+            context_length: Some(1024),
+            max_tokens: None,
+            threads: None,
+            gpu_layers: None,
+            extra_args: Vec::new(),
+        };
+        let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
+
+        handle_pressure_level(
+            MemoryPressureLevel::Warning,
+            false,
+            Some(512),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap();
+        assert_eq!(config.context_length, Some(512));
+
+        handle_pressure_level(
+            MemoryPressureLevel::Normal,
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap();
+
+        assert_eq!(config.context_length, Some(1024));
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn normal_restores_after_model_switch() {
+        let backend = TestBackend {
+            program: "sleep".to_string(),
+        };
+        let mut state = AdjustmentState::new();
+        let mut config = RunConfig {
+            runtime: "llama.cpp".to_string(),
+            model: Some(PathBuf::from("big.gguf")),
+            context_length: None,
+            max_tokens: None,
+            threads: None,
+            gpu_layers: None,
+            extra_args: Vec::new(),
+        };
+        let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
+
+        handle_pressure_level(
+            MemoryPressureLevel::Warning,
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("small.gguf"),
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap();
+        assert_eq!(
+            config.model.as_ref().map(|m| m.display().to_string()),
+            Some("small.gguf".to_string())
+        );
+
+        handle_pressure_level(
+            MemoryPressureLevel::Normal,
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.model.as_ref().map(|m| m.display().to_string()),
+            Some("big.gguf".to_string())
+        );
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn normal_restores_after_max_tokens_change() {
+        let backend = TestBackend {
+            program: "sleep".to_string(),
+        };
+        let mut state = AdjustmentState::new();
+        let mut config = RunConfig {
+            runtime: "llama.cpp".to_string(),
+            model: Some(PathBuf::from("model.gguf")),
+            context_length: None,
+            max_tokens: Some(256),
+            threads: None,
+            gpu_layers: None,
+            extra_args: Vec::new(),
+        };
+        let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
+
+        handle_pressure_level(
+            MemoryPressureLevel::Warning,
+            false,
+            None,
+            None,
+            None,
+            Some(128),
+            None,
+            None,
+            None,
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap();
+        assert_eq!(config.max_tokens, Some(128));
+
+        handle_pressure_level(
+            MemoryPressureLevel::Normal,
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap();
+
+        assert_eq!(config.max_tokens, Some(256));
         let _ = child.kill();
         let _ = child.wait();
     }
