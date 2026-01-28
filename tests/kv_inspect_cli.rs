@@ -130,6 +130,48 @@ fn kv_inspect_json_includes_charts() {
 }
 
 #[test]
+fn kv_inspect_table_output_headers() {
+    let model_path = unique_temp_path("kv_inspect_table", "gguf");
+    write_minimal_gguf(&model_path);
+
+    let stdout = run_cli(&[
+        "kv-inspect",
+        "--model",
+        model_path.to_str().unwrap(),
+        "--context-length",
+        "64",
+        "--layers",
+    ]);
+
+    assert!(stdout.contains("Per-layer KV breakdown"));
+    assert!(stdout.contains("Layer"));
+
+    let _ = fs::remove_file(&model_path);
+}
+
+#[test]
+fn kv_inspect_context_chart_output() {
+    let model_path = unique_temp_path("kv_inspect_context_chart", "gguf");
+    write_minimal_gguf(&model_path);
+
+    let stdout = run_cli(&[
+        "kv-inspect",
+        "--model",
+        model_path.to_str().unwrap(),
+        "--context-length",
+        "64",
+        "--context-chart",
+        "--context-step",
+        "32",
+    ]);
+
+    assert!(stdout.contains("KV cache by context length"));
+    assert!(stdout.contains("Context"));
+
+    let _ = fs::remove_file(&model_path);
+}
+
+#[test]
 fn run_dry_run_with_warning_flags() {
     let status = Command::new(bin())
         .current_dir(workspace_root())
@@ -157,4 +199,22 @@ fn run_dry_run_with_warning_flags() {
         .unwrap();
 
     assert!(status.success());
+}
+
+#[test]
+fn run_dry_run_outputs_command() {
+    let output = run_cli(&[
+        "run",
+        "--profile",
+        "llama_cpp_safe",
+        "--model",
+        "model.gguf",
+        "--max-tokens",
+        "32",
+        "--threads",
+        "2",
+        "--dry-run",
+    ]);
+
+    assert!(output.contains("llama-cli"));
 }
