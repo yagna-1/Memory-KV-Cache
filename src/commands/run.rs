@@ -77,6 +77,7 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     let mut warning_max_tokens = None;
     let mut warning_threads = None;
     let mut warning_gpu_layers = None;
+    let mut warning_model = None;
     let mut progress = false;
     let mut pressure_events = false;
     let mut dry_run = false;
@@ -136,6 +137,7 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
                 warning_gpu_layers =
                     Some(parse_u32("--warning-gpu-layers", &next_value("--warning-gpu-layers", &mut iter)?)?)
             }
+            "--warning-model" => warning_model = Some(next_value("--warning-model", &mut iter)?),
             "--capture-output" => capture_output = true,
             "--progress" => progress = true,
             "--pressure-events" => pressure_events = true,
@@ -209,6 +211,7 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             warning_max_tokens,
             warning_threads,
             warning_gpu_layers,
+            warning_model.as_deref(),
             progress,
             pressure_events,
         )
@@ -280,6 +283,7 @@ fn run_with_monitor(
     warning_max_tokens: Option<u32>,
     warning_threads: Option<u32>,
     warning_gpu_layers: Option<u32>,
+    warning_model: Option<&str>,
     progress: bool,
     pressure_events: bool,
 ) -> Result<(), String> {
@@ -330,6 +334,7 @@ fn run_with_monitor(
                     warning_max_tokens,
                     warning_threads,
                     warning_gpu_layers,
+                    warning_model,
                     &mut state,
                     &mut active_config,
                     backend.as_ref(),
@@ -361,6 +366,7 @@ fn run_with_monitor(
                         warning_max_tokens,
                         warning_threads,
                         warning_gpu_layers,
+                        warning_model,
                         &mut state,
                         &mut active_config,
                         backend.as_ref(),
@@ -519,6 +525,7 @@ fn handle_pressure_level(
     warning_max_tokens: Option<u32>,
     warning_threads: Option<u32>,
     warning_gpu_layers: Option<u32>,
+    warning_model: Option<&str>,
     state: &mut AdjustmentState,
     active_config: &mut RunConfig,
     backend: &dyn LLMRunner,
@@ -638,6 +645,32 @@ fn handle_pressure_level(
             *stderr_thread = spawned.2;
         }
     }
+    if matches!(level, MemoryPressureLevel::Warning)
+        && state.can_reduce_on_warning(false)
+        && warning_model.is_some()
+    {
+        let new_model = warning_model.unwrap_or_default();
+        if !new_model.is_empty() {
+            let current = active_config
+                .model
+                .as_ref()
+                .map(|m| m.display().to_string())
+                .unwrap_or_default();
+            if current != new_model {
+                state.record_warning();
+                let _ = child.kill();
+                join_output_threads(stdout_thread.take(), stderr_thread.take());
+                active_config.model = Some(std::path::PathBuf::from(new_model));
+                let spec = backend
+                    .build_command(active_config)
+                    .map_err(|err| err.to_string())?;
+                let spawned = spawn_child(&spec, capture_output, progress)?;
+                *child = spawned.0;
+                *stdout_thread = spawned.1;
+                *stderr_thread = spawned.2;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -714,6 +747,8 @@ OPTIONS:
                        Restart with fewer threads on warning
   --warning-gpu-layers <n>
                        Restart with fewer GPU layers on warning
+  --warning-model <path>
+                       Restart with a different model on warning
   --capture-output      Capture and prefix stdout/stderr
   --progress            Detect progress lines (implies capture)
   --pressure-events     Use macOS memory pressure events
