@@ -62,6 +62,7 @@ config/
 ## Notes
 - Dependency additions are deferred until `cargo` is available in this environment.
 - Memory monitoring uses Mach `task_info` on macOS with a `ps` fallback.
+- Memory pressure events are available via `monitor --pressure-events` on macOS.
 - See `plan.md` for detailed roadmap.
 
 ## Docs
