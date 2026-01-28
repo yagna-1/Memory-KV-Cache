@@ -72,6 +72,7 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     let mut capture_output = false;
     let mut abort_on_critical = false;
     let mut warning_context_length = None;
+    let mut warning_max_tokens = None;
     let mut progress = false;
     let mut pressure_events = false;
     let mut dry_run = false;
@@ -110,6 +111,10 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             "--warning-context-length" => {
                 warning_context_length =
                     Some(parse_u32("--warning-context-length", &next_value("--warning-context-length", &mut iter)?)?)
+            }
+            "--warning-max-tokens" => {
+                warning_max_tokens =
+                    Some(parse_u32("--warning-max-tokens", &next_value("--warning-max-tokens", &mut iter)?)?)
             }
             "--capture-output" => capture_output = true,
             "--progress" => progress = true,
@@ -179,6 +184,7 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             capture_output,
             abort_on_critical,
             warning_context_length,
+            warning_max_tokens,
             progress,
             pressure_events,
         )
@@ -245,6 +251,7 @@ fn run_with_monitor(
     capture_output: bool,
     abort_on_critical: bool,
     warning_context_length: Option<u32>,
+    warning_max_tokens: Option<u32>,
     progress: bool,
     pressure_events: bool,
 ) -> Result<(), String> {
@@ -290,6 +297,7 @@ fn run_with_monitor(
                     event.level,
                     abort_on_critical,
                     warning_context_length,
+                    warning_max_tokens,
                     &mut state,
                     &mut active_config,
                     backend.as_ref(),
@@ -316,6 +324,7 @@ fn run_with_monitor(
                         level,
                         abort_on_critical,
                         warning_context_length,
+                        warning_max_tokens,
                         &mut state,
                         &mut active_config,
                         backend.as_ref(),
@@ -469,6 +478,7 @@ fn handle_pressure_level(
     level: MemoryPressureLevel,
     abort_on_critical: bool,
     warning_context_length: Option<u32>,
+    warning_max_tokens: Option<u32>,
     state: &mut AdjustmentState,
     active_config: &mut RunConfig,
     backend: &dyn LLMRunner,
@@ -493,6 +503,26 @@ fn handle_pressure_level(
             let _ = child.kill();
             join_output_threads(stdout_thread.take(), stderr_thread.take());
             active_config.context_length = Some(new_length);
+            let spec = backend
+                .build_command(active_config)
+                .map_err(|err| err.to_string())?;
+            let spawned = spawn_child(&spec, capture_output, progress)?;
+            *child = spawned.0;
+            *stdout_thread = spawned.1;
+            *stderr_thread = spawned.2;
+            return Ok(());
+        }
+    }
+    if matches!(level, MemoryPressureLevel::Warning)
+        && state.can_reduce_on_warning()
+        && warning_max_tokens.is_some()
+    {
+        let new_max = warning_max_tokens.unwrap_or(0);
+        if new_max > 0 && active_config.max_tokens != Some(new_max) {
+            state.record_warning();
+            let _ = child.kill();
+            join_output_threads(stdout_thread.take(), stderr_thread.take());
+            active_config.max_tokens = Some(new_max);
             let spec = backend
                 .build_command(active_config)
                 .map_err(|err| err.to_string())?;
@@ -568,6 +598,8 @@ OPTIONS:
   --abort-on-critical   Stop the runtime on critical pressure
   --warning-context-length <n>
                        Restart with lower context length on warning
+  --warning-max-tokens <n>
+                       Restart with lower max tokens on warning
   --capture-output      Capture and prefix stdout/stderr
   --progress            Detect progress lines (implies capture)
   --pressure-events     Use macOS memory pressure events

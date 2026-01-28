@@ -32,6 +32,7 @@ Options:
 - `--monitor-critical <size>`: critical threshold (e.g. `1gb`)
 - `--abort-on-critical`: stop runtime on critical pressure
 - `--warning-context-length <n>`: restart with lower context length on warning
+- `--warning-max-tokens <n>`: restart with lower max tokens on warning
 - `--capture-output`: prefix stdout/stderr lines
 - `--progress`: detect progress lines (implies capture)
 - `--pressure-events`: use macOS memory pressure events
