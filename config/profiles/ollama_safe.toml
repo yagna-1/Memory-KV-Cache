@@ -1,0 +1,5 @@
+runtime = "ollama"
+model = ""
+context_length = 2048
+max_tokens = 512
+precision = "fp16"
