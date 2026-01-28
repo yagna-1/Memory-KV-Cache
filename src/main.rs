@@ -1,6 +1,7 @@
 mod commands;
 mod llm_backend;
 mod memory_monitor;
+mod memory_pressure;
 mod backends;
 mod gguf;
 mod profile;

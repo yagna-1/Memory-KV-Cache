@@ -32,7 +32,7 @@ impl LLMRunner for OllamaBackend {
 #[cfg(test)]
 mod tests {
     use super::OllamaBackend;
-    use crate::llm_backend::RunConfig;
+    use crate::llm_backend::{LLMRunner, RunConfig};
     use std::path::PathBuf;
 
     #[test]

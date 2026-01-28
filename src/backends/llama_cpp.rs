@@ -58,7 +58,7 @@ impl LLMRunner for LlamaCppBackend {
 #[cfg(test)]
 mod tests {
     use super::LlamaCppBackend;
-    use crate::llm_backend::RunConfig;
+    use crate::llm_backend::{LLMRunner, RunConfig};
     use std::path::PathBuf;
 
     #[test]

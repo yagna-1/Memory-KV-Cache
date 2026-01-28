@@ -24,7 +24,7 @@ impl LLMRunner for VllmBackend {
 #[cfg(test)]
 mod tests {
     use super::VllmBackend;
-    use crate::llm_backend::{LLMError, RunConfig};
+    use crate::llm_backend::{LLMError, LLMRunner, RunConfig};
 
     #[test]
     fn vllm_backend_unimplemented() {
