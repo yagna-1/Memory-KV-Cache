@@ -66,6 +66,7 @@ config/
 - Memory pressure events are available via `monitor --pressure-events` on macOS.
 - Ollama context length uses `OLLAMA_CONTEXT_LENGTH` when `--context-length` is provided and falls back to Modelfile `PARAMETER num_ctx`.
 - Normal pressure restores the baseline run configuration after warning adjustments.
+- llama.cpp cache types can be set with `--cache-type-k` and `--cache-type-v`.
 - See `plan.md` for detailed roadmap.
 
 ## Docs

@@ -10,6 +10,13 @@ cargo build
 cargo run -- <command> [options]
 ```
 
+## KV cache settings
+For llama.cpp, KV cache quantization is controlled by:
+- `--cache-type-k <type>` and `--cache-type-v <type>` CLI flags
+- `cache_type_k` / `cache_type_v` keys in profile files
+
+These values are passed directly to the llama.cpp CLI and should match supported cache types.
+
 ## Test
 ```
 cargo test

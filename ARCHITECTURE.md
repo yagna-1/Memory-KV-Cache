@@ -30,6 +30,14 @@ Backends currently build subprocess command lines:
 - `ollama`: `ollama run <model>`
 - `mlc` and `vllm`: placeholders
 
+### KV cache types (llama.cpp)
+The run configuration also supports KV cache quantization for llama.cpp:
+- `cache_type_k` maps to `--cache-type-k`
+- `cache_type_v` maps to `--cache-type-v`
+
+These settings are applied only when a llama.cpp backend is selected. They can be supplied
+via CLI flags or profile files and are preserved across warning-level adjustments.
+
 ## Data flow
 ```
 User CLI

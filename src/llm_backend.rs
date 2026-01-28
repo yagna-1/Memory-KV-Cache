@@ -10,6 +10,8 @@ pub struct RunConfig {
     pub max_tokens: Option<u32>,
     pub threads: Option<u32>,
     pub gpu_layers: Option<u32>,
+    pub cache_type_k: Option<String>,
+    pub cache_type_v: Option<String>,
     pub extra_args: Vec<String>,
 }
 
