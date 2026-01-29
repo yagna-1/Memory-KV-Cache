@@ -1216,6 +1216,96 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    fn rapid_pressure_changes_reapply_warning() {
+        let backend = TestBackend {
+            program: "sleep".to_string(),
+        };
+        let mut state = AdjustmentState::new();
+        let mut config = RunConfig {
+            runtime: "llama.cpp".to_string(),
+            model: Some(PathBuf::from("model.gguf")),
+            context_length: Some(1024),
+            max_tokens: None,
+            threads: None,
+            gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
+            extra_args: Vec::new(),
+        };
+        let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
+
+        handle_pressure_level(
+            MemoryPressureLevel::Warning,
+            false,
+            Some(512),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap();
+        assert_eq!(config.context_length, Some(512));
+
+        handle_pressure_level(
+            MemoryPressureLevel::Normal,
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap();
+        assert_eq!(config.context_length, Some(1024));
+
+        handle_pressure_level(
+            MemoryPressureLevel::Warning,
+            false,
+            Some(512),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap();
+        assert_eq!(config.context_length, Some(512));
+
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[test]
+    #[cfg(unix)]
     fn critical_abort_stops_child() {
         let backend = TestBackend {
             program: "sleep".to_string(),

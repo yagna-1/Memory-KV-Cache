@@ -1,4 +1,6 @@
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -85,4 +87,30 @@ fn monitor_rejects_critical_below_warning() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Critical threshold must be >= warning threshold"));
+}
+
+#[test]
+#[cfg(unix)]
+fn config_init_fails_when_home_unwritable() {
+    let temp_dir = unique_temp_dir("llm_manager_ro_home");
+    fs::create_dir_all(&temp_dir).unwrap();
+    let mut perms = fs::metadata(&temp_dir).unwrap().permissions();
+    perms.set_mode(0o500);
+    fs::set_permissions(&temp_dir, perms).unwrap();
+
+    let output = Command::new(bin())
+        .current_dir(workspace_root())
+        .env("HOME", &temp_dir)
+        .args(["config", "init"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Failed to create"));
+
+    let mut restore = fs::metadata(&temp_dir).unwrap().permissions();
+    restore.set_mode(0o700);
+    let _ = fs::set_permissions(&temp_dir, restore);
+    let _ = fs::remove_dir_all(&temp_dir);
 }
