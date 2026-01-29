@@ -79,6 +79,8 @@ Example:
 llm-manager kv-inspect --model model.gguf --auto-ram --context-chart --layer-chart
 ```
 
+Note: lower precision reduces memory usage but may affect output quality.
+
 ## config
 ```
 llm-manager config [show|edit|init]
