@@ -12,6 +12,9 @@ pub struct RunConfig {
     pub gpu_layers: Option<u32>,
     pub cache_type_k: Option<String>,
     pub cache_type_v: Option<String>,
+    pub max_model_len: Option<u32>,
+    pub max_num_seqs: Option<u32>,
+    pub quantization: Option<String>,
     pub extra_args: Vec<String>,
 }
 

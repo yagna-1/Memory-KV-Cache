@@ -15,6 +15,9 @@ pub struct Profile {
     pub gpu_layers: Option<u32>,
     pub cache_type_k: Option<String>,
     pub cache_type_v: Option<String>,
+    pub max_model_len: Option<u32>,
+    pub max_num_seqs: Option<u32>,
+    pub quantization: Option<String>,
     pub precision: Option<String>,
 }
 
@@ -61,6 +64,18 @@ impl Profile {
 
         if config.cache_type_v.is_none() {
             config.cache_type_v = self.cache_type_v.clone();
+        }
+
+        if config.max_model_len.is_none() {
+            config.max_model_len = self.max_model_len;
+        }
+
+        if config.max_num_seqs.is_none() {
+            config.max_num_seqs = self.max_num_seqs;
+        }
+
+        if config.quantization.is_none() {
+            config.quantization = self.quantization.clone();
         }
 
         Ok(())
@@ -114,6 +129,18 @@ impl Profile {
             }
         }
 
+        if let Some(max_model_len) = self.max_model_len {
+            if max_model_len == 0 {
+                return Err("max_model_len must be > 0".to_string());
+            }
+        }
+
+        if let Some(max_num_seqs) = self.max_num_seqs {
+            if max_num_seqs == 0 {
+                return Err("max_num_seqs must be > 0".to_string());
+            }
+        }
+
         if let Some(precision) = &self.precision {
             let norm = precision.trim().to_lowercase();
             if norm.is_empty() {
@@ -122,6 +149,15 @@ impl Profile {
                 return Err(format!("Unsupported precision in profile: {precision}"));
             } else {
                 self.precision = Some(norm);
+            }
+        }
+
+        if let Some(quantization) = &self.quantization {
+            let trimmed = quantization.trim();
+            if trimmed.is_empty() {
+                self.quantization = None;
+            } else {
+                self.quantization = Some(trimmed.to_string());
             }
         }
 
@@ -243,6 +279,9 @@ fn parse_profile(contents: &str) -> Result<Profile, String> {
             "gpu_layers" => profile.gpu_layers = Some(parse_u32(value)?),
             "cache_type_k" => profile.cache_type_k = Some(parse_string(value)?),
             "cache_type_v" => profile.cache_type_v = Some(parse_string(value)?),
+            "max_model_len" => profile.max_model_len = Some(parse_u32(value)?),
+            "max_num_seqs" => profile.max_num_seqs = Some(parse_u32(value)?),
+            "quantization" => profile.quantization = Some(parse_string(value)?),
             "precision" => profile.precision = Some(parse_string(value)?),
             _ => {}
         }
@@ -338,6 +377,9 @@ mod tests {
             gpu_layers = 2
             cache_type_k = "q8_0"
             cache_type_v = "q4_0"
+            max_model_len = 4096
+            max_num_seqs = 8
+            quantization = "awq"
             precision = "fp16"
         "#;
         let mut profile = parse_profile(input).unwrap();
@@ -352,6 +394,9 @@ mod tests {
         assert_eq!(profile.gpu_layers, Some(2));
         assert_eq!(profile.cache_type_k.as_deref(), Some("q8_0"));
         assert_eq!(profile.cache_type_v.as_deref(), Some("q4_0"));
+        assert_eq!(profile.max_model_len, Some(4096));
+        assert_eq!(profile.max_num_seqs, Some(8));
+        assert_eq!(profile.quantization.as_deref(), Some("awq"));
         assert_eq!(profile.precision.as_deref(), Some("fp16"));
     }
 
@@ -378,6 +423,7 @@ mod tests {
             precision = ""
             cache_type_k = ""
             cache_type_v = ""
+            quantization = ""
         "#;
         let mut profile = parse_profile(input).unwrap();
         profile.validate().unwrap();
@@ -387,6 +433,7 @@ mod tests {
         assert!(profile.precision.is_none());
         assert!(profile.cache_type_k.is_none());
         assert!(profile.cache_type_v.is_none());
+        assert!(profile.quantization.is_none());
     }
 
     #[test]
@@ -407,6 +454,9 @@ mod tests {
             gpu_layers: None,
             cache_type_k: None,
             cache_type_v: None,
+            max_model_len: None,
+            max_num_seqs: None,
+            quantization: None,
             extra_args: Vec::new(),
         };
 
