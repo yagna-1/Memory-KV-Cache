@@ -84,6 +84,9 @@ mod tests {
             gpu_layers: Some(10),
             cache_type_k: Some("q8_0".to_string()),
             cache_type_v: Some("q4_0".to_string()),
+            max_model_len: None,
+            max_num_seqs: None,
+            quantization: None,
             extra_args: vec!["--foo".to_string()],
         };
 
@@ -123,6 +126,9 @@ mod tests {
             gpu_layers: None,
             cache_type_k: None,
             cache_type_v: None,
+            max_model_len: None,
+            max_num_seqs: None,
+            quantization: None,
             extra_args: Vec::new(),
         };
 

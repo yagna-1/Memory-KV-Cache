@@ -38,6 +38,9 @@ mod tests {
             gpu_layers: None,
             cache_type_k: None,
             cache_type_v: None,
+            max_model_len: None,
+            max_num_seqs: None,
+            quantization: None,
             extra_args: Vec::new(),
         };
 

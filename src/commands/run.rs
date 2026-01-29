@@ -90,6 +90,9 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     let mut gpu_layers = None;
     let mut cache_type_k = None;
     let mut cache_type_v = None;
+    let mut max_model_len = None;
+    let mut max_num_seqs = None;
+    let mut quantization = None;
     let mut profile_name = None;
     let mut profile_dir = None;
     let mut monitor = false;
@@ -135,6 +138,21 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             }
             "--cache-type-v" => {
                 cache_type_v = Some(next_value("--cache-type-v", &mut iter)?);
+            }
+            "--max-model-len" => {
+                max_model_len = Some(parse_nonzero_u32(
+                    "--max-model-len",
+                    &next_value("--max-model-len", &mut iter)?,
+                )?)
+            }
+            "--max-num-seqs" => {
+                max_num_seqs = Some(parse_nonzero_u32(
+                    "--max-num-seqs",
+                    &next_value("--max-num-seqs", &mut iter)?,
+                )?)
+            }
+            "--quantization" => {
+                quantization = Some(next_value("--quantization", &mut iter)?);
             }
             "--gpu-layers" => {
                 gpu_layers = Some(parse_u32("--gpu-layers", &next_value("--gpu-layers", &mut iter)?)?)
@@ -222,6 +240,9 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
         gpu_layers,
         cache_type_k,
         cache_type_v,
+        max_model_len,
+        max_num_seqs,
+        quantization,
         extra_args,
     };
 
@@ -238,6 +259,15 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     }
 
     let runtime = config.runtime.clone();
+    if runtime != "vllm"
+        && (config.max_model_len.is_some()
+            || config.max_num_seqs.is_some()
+            || config.quantization.is_some())
+    {
+        return Err(
+            "vLLM-only flags used. Switch to --runtime vllm or remove vLLM settings.".to_string(),
+        );
+    }
     let backend: Box<dyn LLMRunner> = match runtime.as_str() {
         "llama.cpp" | "llama" => Box::new(LlamaCppBackend::default()),
         "ollama" => Box::new(OllamaBackend::default()),
@@ -914,6 +944,9 @@ mod tests {
             gpu_layers: None,
             cache_type_k: None,
             cache_type_v: None,
+            max_model_len: None,
+            max_num_seqs: None,
+            quantization: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -960,6 +993,9 @@ mod tests {
             gpu_layers: None,
             cache_type_k: None,
             cache_type_v: None,
+            max_model_len: None,
+            max_num_seqs: None,
+            quantization: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -1028,6 +1064,9 @@ mod tests {
             gpu_layers: None,
             cache_type_k: None,
             cache_type_v: None,
+            max_model_len: None,
+            max_num_seqs: None,
+            quantization: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -1077,6 +1116,9 @@ mod tests {
             gpu_layers: None,
             cache_type_k: None,
             cache_type_v: None,
+            max_model_len: None,
+            max_num_seqs: None,
+            quantization: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -1145,6 +1187,9 @@ mod tests {
             gpu_layers: None,
             cache_type_k: None,
             cache_type_v: None,
+            max_model_len: None,
+            max_num_seqs: None,
+            quantization: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -1219,6 +1264,9 @@ mod tests {
             gpu_layers: None,
             cache_type_k: None,
             cache_type_v: None,
+            max_model_len: None,
+            max_num_seqs: None,
+            quantization: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -1287,6 +1335,9 @@ mod tests {
             gpu_layers: None,
             cache_type_k: None,
             cache_type_v: None,
+            max_model_len: None,
+            max_num_seqs: None,
+            quantization: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -1377,6 +1428,9 @@ mod tests {
             gpu_layers: None,
             cache_type_k: None,
             cache_type_v: None,
+            max_model_len: None,
+            max_num_seqs: None,
+            quantization: None,
             extra_args: Vec::new(),
         };
         let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
@@ -1421,6 +1475,9 @@ mod tests {
             gpu_layers: None,
             cache_type_k: None,
             cache_type_v: None,
+            max_model_len: None,
+            max_num_seqs: None,
+            quantization: None,
             extra_args: Vec::new(),
         };
 
@@ -1442,6 +1499,9 @@ OPTIONS:
   --threads <n>         Thread count
   --cache-type-k <type> KV cache type for K (llama.cpp)
   --cache-type-v <type> KV cache type for V (llama.cpp)
+  --max-model-len <n>   vLLM max model length
+  --max-num-seqs <n>    vLLM max sequences
+  --quantization <q>    vLLM quantization mode
   --gpu-layers <n>      GPU layers for llama.cpp
   --profile <name>      Load profile from config directories
   --profile-dir <path>  Search this directory for profiles

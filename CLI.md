@@ -25,6 +25,9 @@ Options:
 - `--threads <n>`: threads count
 - `--cache-type-k <type>`: llama.cpp KV cache type for K
 - `--cache-type-v <type>`: llama.cpp KV cache type for V
+- `--max-model-len <n>`: vLLM max model length
+- `--max-num-seqs <n>`: vLLM max sequences
+- `--quantization <q>`: vLLM quantization mode
 - `--gpu-layers <n>`: llama.cpp GPU layers
 - `--profile <name>`: load defaults from a profile
 - `--profile-dir <path>`: additional profile search directory
@@ -135,5 +138,8 @@ threads = 4
 gpu_layers = 0
 cache_type_k = "q8_0"
 cache_type_v = "q4_0"
+max_model_len = 4096
+max_num_seqs = 8
+quantization = "awq"
 precision = "fp16"
 ```

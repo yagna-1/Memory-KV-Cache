@@ -268,7 +268,7 @@ fn list_profile_files(profile_dir: &PathBuf, verbose: bool) -> Result<(), String
             if verbose {
                 let (profile, _) = load_profile(&path.to_string_lossy(), None)?;
                 println!(
-                    " - {} (runtime={}, model={}, warning_model={}, context_length={}, max_tokens={}, threads={}, gpu_layers={}, cache_type_k={}, cache_type_v={}, precision={})",
+                    " - {} (runtime={}, model={}, warning_model={}, context_length={}, max_tokens={}, threads={}, gpu_layers={}, cache_type_k={}, cache_type_v={}, max_model_len={}, max_num_seqs={}, quantization={}, precision={})",
                     name,
                     format_opt(profile.runtime.as_deref()),
                     format_opt(profile.model.as_deref()),
@@ -279,6 +279,9 @@ fn list_profile_files(profile_dir: &PathBuf, verbose: bool) -> Result<(), String
                     format_opt(profile.gpu_layers),
                     format_opt(profile.cache_type_k.as_deref()),
                     format_opt(profile.cache_type_v.as_deref()),
+                    format_opt(profile.max_model_len),
+                    format_opt(profile.max_num_seqs),
+                    format_opt(profile.quantization.as_deref()),
                     format_opt(profile.precision.as_deref())
                 );
             } else {
