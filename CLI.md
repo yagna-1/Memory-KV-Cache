@@ -80,6 +80,7 @@ llm-manager kv-inspect --model model.gguf --auto-ram --context-chart --layer-cha
 ```
 
 Note: lower precision reduces memory usage but may affect output quality.
+Note: KV sizing mirrors the tensors allocated by `llama_kv_cache_init`.
 
 ## config
 ```

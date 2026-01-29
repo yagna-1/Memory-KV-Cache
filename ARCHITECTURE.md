@@ -14,6 +14,11 @@ DispatchSource + Mach integrations.
 - `src/gguf.rs`: GGUF metadata parser
 - `src/profile.rs`: profile parsing and validation
 
+## GGUF parsing notes
+- Spec reference: https://github.com/ggerganov/ggml/blob/master/docs/gguf.md
+- A custom parser is used to avoid additional dependencies while still extracting
+  core KV metadata (layers, hidden size, heads, architecture).
+
 ## Memory monitoring approach
 The monitor polls process memory via Mach `task_info` on macOS with a `ps` fallback and maps RSS to
 warning/critical thresholds. Each poll
