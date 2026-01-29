@@ -1213,6 +1213,73 @@ mod tests {
         let _ = child.kill();
         let _ = child.wait();
     }
+
+    #[test]
+    #[cfg(unix)]
+    fn critical_abort_stops_child() {
+        let backend = TestBackend {
+            program: "sleep".to_string(),
+        };
+        let mut state = AdjustmentState::new();
+        let mut config = RunConfig {
+            runtime: "llama.cpp".to_string(),
+            model: Some(PathBuf::from("model.gguf")),
+            context_length: None,
+            max_tokens: None,
+            threads: None,
+            gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
+            extra_args: Vec::new(),
+        };
+        let (mut child, mut stdout_thread, mut stderr_thread) = spawn_test_child(&backend, &config);
+
+        let err = handle_pressure_level(
+            MemoryPressureLevel::Critical,
+            true,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            &mut state,
+            &mut config,
+            &backend,
+            false,
+            false,
+            &mut child,
+            &mut stdout_thread,
+            &mut stderr_thread,
+        )
+        .unwrap_err();
+
+        assert!(err.contains("Aborted on critical"));
+        let _ = child.wait();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn run_with_capture_reports_nonzero_exit() {
+        let backend: Box<dyn LLMRunner> = Box::new(TestBackend {
+            program: "false".to_string(),
+        });
+        let config = RunConfig {
+            runtime: "llama.cpp".to_string(),
+            model: Some(PathBuf::from("model.gguf")),
+            context_length: None,
+            max_tokens: None,
+            threads: None,
+            gpu_layers: None,
+            cache_type_k: None,
+            cache_type_v: None,
+            extra_args: Vec::new(),
+        };
+
+        let err = run_with_capture(backend, &config, false).unwrap_err();
+        assert!(err.contains("Process exited with status"));
+    }
 }
 
 fn print_help() {
