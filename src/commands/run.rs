@@ -1,6 +1,7 @@
+use std::env;
 use std::io::{BufRead, BufReader};
 use std::os::raw::c_int;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
 use std::sync::{atomic::{AtomicBool, Ordering}, Once};
@@ -493,6 +494,7 @@ fn spawn_child(
     capture_output: bool,
     progress: bool,
 ) -> Result<(Child, Option<JoinHandle<()>>, Option<JoinHandle<()>>), String> {
+    ensure_program_available(&spec.program)?;
     let mut command = Command::new(&spec.program);
     command.args(&spec.args);
     for (key, value) in &spec.env {
@@ -514,6 +516,31 @@ fn spawn_child(
     } else {
         Ok((child, None, None))
     }
+}
+
+fn ensure_program_available(program: &str) -> Result<(), String> {
+    if program.trim().is_empty() {
+        return Err("Runtime executable not found: <empty>".to_string());
+    }
+
+    let path = Path::new(program);
+    if path.is_absolute() || path.components().count() > 1 {
+        if path.is_file() {
+            return Ok(());
+        }
+        return Err(format!("Runtime executable not found: {program}"));
+    }
+
+    if let Some(paths) = env::var_os("PATH") {
+        for dir in env::split_paths(&paths) {
+            let candidate = dir.join(program);
+            if candidate.is_file() {
+                return Ok(());
+            }
+        }
+    }
+
+    Err(format!("Runtime executable not found: {program}"))
 }
 
 fn spawn_output_pump<R: std::io::Read + Send + 'static>(
