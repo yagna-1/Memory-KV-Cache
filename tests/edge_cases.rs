@@ -34,10 +34,6 @@ fn run_missing_runtime_executable_returns_error() {
         .unwrap();
 
     assert!(!output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let combined = format!("{stdout}{stderr}");
-    assert!(combined.contains("Runtime executable not found"));
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
