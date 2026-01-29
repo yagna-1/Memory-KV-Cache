@@ -25,16 +25,19 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
                 pid = Some(parse_u32("--pid", &next_value("--pid", &mut iter)?)?);
             }
             "--interval-ms" => {
-                interval_ms = parse_u64("--interval-ms", &next_value("--interval-ms", &mut iter)?)?;
+                interval_ms = parse_nonzero_u64(
+                    "--interval-ms",
+                    &next_value("--interval-ms", &mut iter)?,
+                )?;
             }
             "--warning" => {
-                warning = Some(parse_bytes(
+                warning = Some(parse_nonzero_bytes(
                     "--warning",
                     &next_value("--warning", &mut iter)?,
                 )?);
             }
             "--critical" => {
-                critical = Some(parse_bytes(
+                critical = Some(parse_nonzero_bytes(
                     "--critical",
                     &next_value("--critical", &mut iter)?,
                 )?);
@@ -42,7 +45,9 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             "--log-file" => log_file = Some(next_value("--log-file", &mut iter)?),
             "--pressure-events" => pressure_events = true,
             other if other.starts_with('-') => {
-                return Err(format!("Unknown flag for monitor: {other}"));
+                return Err(format!(
+                    "Unknown flag for monitor: {other}. Use --help for options."
+                ));
             }
             _ => {}
         }
@@ -171,6 +176,14 @@ fn parse_u64(flag: &str, value: &str) -> Result<u64, String> {
         .map_err(|_| format!("Invalid numeric value for {flag}: {value}"))
 }
 
+fn parse_nonzero_u64(flag: &str, value: &str) -> Result<u64, String> {
+    let parsed = parse_u64(flag, value)?;
+    if parsed == 0 {
+        return Err(format!("{flag} must be > 0"));
+    }
+    Ok(parsed)
+}
+
 fn parse_bytes(flag: &str, value: &str) -> Result<u64, String> {
     let trimmed = value.trim().to_lowercase();
     let (number, unit) = trimmed
@@ -188,9 +201,21 @@ fn parse_bytes(flag: &str, value: &str) -> Result<u64, String> {
         "m" | "mb" => 1024u64.pow(2),
         "g" | "gb" => 1024u64.pow(3),
         "t" | "tb" => 1024u64.pow(4),
-        _ => return Err(format!("Unknown unit for {flag}: {unit}")),
+        _ => {
+            return Err(format!(
+                "Unknown unit for {flag}: {unit} (use b, kb, mb, gb, tb)"
+            ))
+        }
     };
     Ok(base * multiplier)
+}
+
+fn parse_nonzero_bytes(flag: &str, value: &str) -> Result<u64, String> {
+    let parsed = parse_bytes(flag, value)?;
+    if parsed == 0 {
+        return Err(format!("{flag} must be > 0"));
+    }
+    Ok(parsed)
 }
 
 fn format_bytes(value: u64) -> String {

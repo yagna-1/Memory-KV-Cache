@@ -29,8 +29,10 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
         match arg.as_str() {
             "--model" => model = Some(PathBuf::from(next_value("--model", &mut iter)?)),
             "--context-length" => {
-                context_length =
-                    Some(parse_u64("--context-length", &next_value("--context-length", &mut iter)?)?)
+                context_length = Some(parse_nonzero_u64(
+                    "--context-length",
+                    &next_value("--context-length", &mut iter)?,
+                )?)
             }
             "--precision" => precision = Some(next_value("--precision", &mut iter)?),
             "--json" => json = true,
@@ -41,16 +43,20 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             "--profile" => profile_name = Some(next_value("--profile", &mut iter)?),
             "--profile-dir" => profile_dir = Some(PathBuf::from(next_value("--profile-dir", &mut iter)?)),
             "--context-step" => {
-                context_step =
-                    parse_u64("--context-step", &next_value("--context-step", &mut iter)?)?
+                context_step = parse_nonzero_u64(
+                    "--context-step",
+                    &next_value("--context-step", &mut iter)?,
+                )?
             }
             "--available-ram" => {
                 available_ram =
-                    Some(parse_bytes("--available-ram", &next_value("--available-ram", &mut iter)?)?)
+                    Some(parse_nonzero_bytes("--available-ram", &next_value("--available-ram", &mut iter)?)?)
             }
             "--auto-ram" => auto_ram = true,
             other if other.starts_with('-') => {
-                return Err(format!("Unknown flag for kv-inspect: {other}"));
+                return Err(format!(
+                    "Unknown flag for kv-inspect: {other}. Use --help for options."
+                ));
             }
             _ => {}
         }
@@ -74,7 +80,7 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     }
 
     let Some(model_path) = model else {
-        return Err("Missing --model for kv-inspect".to_string());
+        return Err("Missing --model for kv-inspect. Provide --model <path>".to_string());
     };
     let context_length = context_length.unwrap_or(2048);
     let precision = precision.unwrap_or_else(|| "fp16".to_string()).to_lowercase();
@@ -131,7 +137,11 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
         "fp16" => 2u64,
         "fp32" => 4u64,
         "int8" => 1u64,
-        other => return Err(format!("Unsupported precision: {other}")),
+        other => {
+            return Err(format!(
+                "Unsupported precision: {other}. Use fp16, fp32, or int8"
+            ))
+        }
     };
 
     let sizes = compute_kv_sizes(
@@ -382,6 +392,14 @@ fn parse_u64(flag: &str, value: &str) -> Result<u64, String> {
         .map_err(|_| format!("Invalid numeric value for {flag}: {value}"))
 }
 
+fn parse_nonzero_u64(flag: &str, value: &str) -> Result<u64, String> {
+    let parsed = parse_u64(flag, value)?;
+    if parsed == 0 {
+        return Err(format!("{flag} must be > 0"));
+    }
+    Ok(parsed)
+}
+
 fn parse_bytes(flag: &str, value: &str) -> Result<u64, String> {
     let trimmed = value.trim().to_lowercase();
     let (number, unit) = trimmed
@@ -399,9 +417,21 @@ fn parse_bytes(flag: &str, value: &str) -> Result<u64, String> {
         "m" | "mb" => 1024u64.pow(2),
         "g" | "gb" => 1024u64.pow(3),
         "t" | "tb" => 1024u64.pow(4),
-        _ => return Err(format!("Unknown unit for {flag}: {unit}")),
+        _ => {
+            return Err(format!(
+                "Unknown unit for {flag}: {unit} (use b, kb, mb, gb, tb)"
+            ))
+        }
     };
     Ok(base * multiplier)
+}
+
+fn parse_nonzero_bytes(flag: &str, value: &str) -> Result<u64, String> {
+    let parsed = parse_bytes(flag, value)?;
+    if parsed == 0 {
+        return Err(format!("{flag} must be > 0"));
+    }
+    Ok(parsed)
 }
 
 fn format_bytes(value: u64) -> String {
