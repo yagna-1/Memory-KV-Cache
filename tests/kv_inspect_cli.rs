@@ -74,6 +74,18 @@ fn run_cli(args: &[&str]) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
 }
 
+fn parse_json_u64(output: &str, key: &str) -> u64 {
+    let needle = format!("\"{key}\":");
+    let start = output
+        .find(&needle)
+        .unwrap_or_else(|| panic!("missing key {key}"));
+    let rest = output[start + needle.len()..].trim_start();
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    rest[..end].parse().unwrap()
+}
+
 #[test]
 fn kv_inspect_json_contains_expected_fields() {
     let model_path = unique_temp_path("kv_inspect", "gguf");
@@ -199,6 +211,44 @@ fn run_dry_run_with_warning_flags() {
         .unwrap();
 
     assert!(status.success());
+}
+
+#[test]
+fn kv_inspect_precision_changes_memory() {
+    let model_path = unique_temp_path("kv_inspect_precision", "gguf");
+    write_minimal_gguf(&model_path);
+
+    let fp16 = run_cli(&[
+        "kv-inspect",
+        "--model",
+        model_path.to_str().unwrap(),
+        "--context-length",
+        "128",
+        "--precision",
+        "fp16",
+        "--json",
+    ]);
+    let int8 = run_cli(&[
+        "kv-inspect",
+        "--model",
+        model_path.to_str().unwrap(),
+        "--context-length",
+        "128",
+        "--precision",
+        "int8",
+        "--json",
+    ]);
+
+    let fp16_bytes = parse_json_u64(&fp16, "bytes_per_element");
+    let int8_bytes = parse_json_u64(&int8, "bytes_per_element");
+    assert_eq!(fp16_bytes, 2);
+    assert_eq!(int8_bytes, 1);
+
+    let fp16_total = parse_json_u64(&fp16, "total_kv_bytes");
+    let int8_total = parse_json_u64(&int8, "total_kv_bytes");
+    assert!(int8_total < fp16_total);
+
+    let _ = fs::remove_file(&model_path);
 }
 
 #[test]
