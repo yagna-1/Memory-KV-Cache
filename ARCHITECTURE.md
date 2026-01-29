@@ -58,3 +58,11 @@ User CLI
   |
   +--> config ---------------> profiles -> load/validate
 ```
+
+## Supervision loop
+The `run` command supervises a child process and reacts to memory signals:
+- Builds a command from `RunConfig` and spawns the runtime process.
+- Optionally captures stdout/stderr and detects progress lines.
+- Starts a memory monitor (polling or pressure events) when enabled.
+- On warning/critical events, applies adjustments and restarts the child.
+- On normal pressure, restores the baseline config if adjusted.
