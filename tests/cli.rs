@@ -195,6 +195,8 @@ fn monitor_writes_log_file() {
 
     let contents = fs::read_to_string(&log_path).unwrap_or_default();
     assert!(!contents.trim().is_empty());
+    let lower = contents.to_lowercase();
+    assert!(lower.contains("warning") || lower.contains("critical"));
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
