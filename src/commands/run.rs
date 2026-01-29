@@ -116,13 +116,19 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             "--runtime" => runtime = Some(next_value("--runtime", &mut iter)?),
             "--model" => model = Some(PathBuf::from(next_value("--model", &mut iter)?)),
             "--context-length" => {
-                context_length = Some(parse_u32("--context-length", &next_value("--context-length", &mut iter)?)?)
+                context_length = Some(parse_nonzero_u32(
+                    "--context-length",
+                    &next_value("--context-length", &mut iter)?,
+                )?)
             }
             "--max-tokens" => {
-                max_tokens = Some(parse_u32("--max-tokens", &next_value("--max-tokens", &mut iter)?)?)
+                max_tokens = Some(parse_nonzero_u32(
+                    "--max-tokens",
+                    &next_value("--max-tokens", &mut iter)?,
+                )?)
             }
             "--threads" => {
-                threads = Some(parse_u32("--threads", &next_value("--threads", &mut iter)?)?)
+                threads = Some(parse_nonzero_u32("--threads", &next_value("--threads", &mut iter)?)?)
             }
             "--cache-type-k" => {
                 cache_type_k = Some(next_value("--cache-type-k", &mut iter)?);
@@ -137,34 +143,53 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             "--profile-dir" => profile_dir = Some(PathBuf::from(next_value("--profile-dir", &mut iter)?)),
             "--monitor" => monitor = true,
             "--monitor-interval-ms" => {
-                monitor_interval_ms = parse_u64("--monitor-interval-ms", &next_value("--monitor-interval-ms", &mut iter)?)?
+                monitor_interval_ms = parse_nonzero_u64(
+                    "--monitor-interval-ms",
+                    &next_value("--monitor-interval-ms", &mut iter)?,
+                )?
             }
             "--monitor-warning" => {
-                monitor_warning = Some(parse_bytes("--monitor-warning", &next_value("--monitor-warning", &mut iter)?)?)
+                monitor_warning = Some(parse_nonzero_bytes(
+                    "--monitor-warning",
+                    &next_value("--monitor-warning", &mut iter)?,
+                )?)
             }
             "--monitor-critical" => {
-                monitor_critical = Some(parse_bytes("--monitor-critical", &next_value("--monitor-critical", &mut iter)?)?)
+                monitor_critical = Some(parse_nonzero_bytes(
+                    "--monitor-critical",
+                    &next_value("--monitor-critical", &mut iter)?,
+                )?)
             }
             "--abort-on-critical" => abort_on_critical = true,
             "--warning-context-length" => {
-                warning_context_length =
-                    Some(parse_u32("--warning-context-length", &next_value("--warning-context-length", &mut iter)?)?)
+                warning_context_length = Some(parse_nonzero_u32(
+                    "--warning-context-length",
+                    &next_value("--warning-context-length", &mut iter)?,
+                )?)
             }
             "--warning-context-step" => {
-                warning_context_step =
-                    Some(parse_u32("--warning-context-step", &next_value("--warning-context-step", &mut iter)?)?)
+                warning_context_step = Some(parse_nonzero_u32(
+                    "--warning-context-step",
+                    &next_value("--warning-context-step", &mut iter)?,
+                )?)
             }
             "--warning-context-min" => {
-                warning_context_min =
-                    Some(parse_u32("--warning-context-min", &next_value("--warning-context-min", &mut iter)?)?)
+                warning_context_min = Some(parse_nonzero_u32(
+                    "--warning-context-min",
+                    &next_value("--warning-context-min", &mut iter)?,
+                )?)
             }
             "--warning-max-tokens" => {
-                warning_max_tokens =
-                    Some(parse_u32("--warning-max-tokens", &next_value("--warning-max-tokens", &mut iter)?)?)
+                warning_max_tokens = Some(parse_nonzero_u32(
+                    "--warning-max-tokens",
+                    &next_value("--warning-max-tokens", &mut iter)?,
+                )?)
             }
             "--warning-threads" => {
-                warning_threads =
-                    Some(parse_u32("--warning-threads", &next_value("--warning-threads", &mut iter)?)?)
+                warning_threads = Some(parse_nonzero_u32(
+                    "--warning-threads",
+                    &next_value("--warning-threads", &mut iter)?,
+                )?)
             }
             "--warning-gpu-layers" => {
                 warning_gpu_layers =
@@ -180,7 +205,7 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
                 break;
             }
             other if other.starts_with('-') => {
-                return Err(format!("Unknown flag for run: {other}"));
+                return Err(format!("Unknown flag for run: {other}. Use --help for options."));
             }
             other => {
                 extra_args.push(other.to_string());
@@ -218,7 +243,11 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
         "ollama" => Box::new(OllamaBackend::default()),
         "mlc" | "mlc-llm" => Box::new(MlcBackend::default()),
         "vllm" => Box::new(VllmBackend::default()),
-        other => return Err(format!("Unsupported runtime: {other}")),
+        other => {
+            return Err(format!(
+                "Unsupported runtime: {other}. Use --runtime llama.cpp|ollama|mlc|vllm"
+            ))
+        }
     };
 
     if progress {
@@ -277,6 +306,22 @@ fn parse_u64(flag: &str, value: &str) -> Result<u64, String> {
         .map_err(|_| format!("Invalid numeric value for {flag}: {value}"))
 }
 
+fn parse_nonzero_u32(flag: &str, value: &str) -> Result<u32, String> {
+    let parsed = parse_u32(flag, value)?;
+    if parsed == 0 {
+        return Err(format!("{flag} must be > 0"));
+    }
+    Ok(parsed)
+}
+
+fn parse_nonzero_u64(flag: &str, value: &str) -> Result<u64, String> {
+    let parsed = parse_u64(flag, value)?;
+    if parsed == 0 {
+        return Err(format!("{flag} must be > 0"));
+    }
+    Ok(parsed)
+}
+
 fn parse_bytes(flag: &str, value: &str) -> Result<u64, String> {
     let trimmed = value.trim().to_lowercase();
     let (number, unit) = trimmed
@@ -294,9 +339,21 @@ fn parse_bytes(flag: &str, value: &str) -> Result<u64, String> {
         "m" | "mb" => 1024u64.pow(2),
         "g" | "gb" => 1024u64.pow(3),
         "t" | "tb" => 1024u64.pow(4),
-        _ => return Err(format!("Unknown unit for {flag}: {unit}")),
+        _ => {
+            return Err(format!(
+                "Unknown unit for {flag}: {unit} (use b, kb, mb, gb, tb)"
+            ))
+        }
     };
     Ok(base * multiplier)
+}
+
+fn parse_nonzero_bytes(flag: &str, value: &str) -> Result<u64, String> {
+    let parsed = parse_bytes(flag, value)?;
+    if parsed == 0 {
+        return Err(format!("{flag} must be > 0"));
+    }
+    Ok(parsed)
 }
 
 fn format_level(level: MemoryPressureLevel) -> &'static str {

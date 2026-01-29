@@ -43,7 +43,7 @@ impl fmt::Display for LLMError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LLMError::MissingModel { runtime } => {
-                write!(f, "Missing --model for {runtime} runtime")
+                write!(f, "Missing --model for {runtime} runtime. Provide --model <path>")
             }
             LLMError::LaunchFailed { program, source } => {
                 write!(f, "Failed to start {program}: {source}")
