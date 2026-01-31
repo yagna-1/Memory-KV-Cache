@@ -1138,8 +1138,6 @@ mod tests {
             None,
             None,
             None,
-            None,
-            None,
             &mut state,
             &mut config,
             &backend,
