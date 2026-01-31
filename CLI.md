@@ -43,6 +43,9 @@ Options:
 - `--warning-threads <n>`: restart with fewer threads on warning
 - `--warning-gpu-layers <n>`: restart with fewer GPU layers on warning
 - `--warning-model <path>`: restart with a different model on warning
+- `--warning-max-model-len <n>`: vLLM lower max model length on warning
+- `--warning-max-num-seqs <n>`: vLLM lower max sequences on warning
+- `--warning-quantization <q>`: vLLM quantization on warning
 - `--capture-output`: prefix stdout/stderr lines
 - `--progress`: detect progress lines (implies capture)
 - `--pressure-events`: use macOS memory pressure events
@@ -132,6 +135,9 @@ Profiles are simple key/value TOML files. Supported fields:
 runtime = "llama.cpp"
 model = "/path/to/model.gguf"
 warning_model = "/path/to/smaller.gguf"
+warning_max_model_len = 4096
+warning_max_num_seqs = 8
+warning_quantization = "awq"
 context_length = 2048
 max_tokens = 512
 threads = 4

@@ -9,6 +9,9 @@ pub struct Profile {
     pub runtime: Option<String>,
     pub model: Option<String>,
     pub warning_model: Option<String>,
+    pub warning_max_model_len: Option<u32>,
+    pub warning_max_num_seqs: Option<u32>,
+    pub warning_quantization: Option<String>,
     pub context_length: Option<u64>,
     pub max_tokens: Option<u32>,
     pub threads: Option<u32>,
@@ -108,6 +111,27 @@ impl Profile {
                 self.warning_model = None;
             } else {
                 self.warning_model = Some(trimmed.to_string());
+            }
+        }
+
+        if let Some(value) = self.warning_max_model_len {
+            if value == 0 {
+                return Err("warning_max_model_len must be > 0".to_string());
+            }
+        }
+
+        if let Some(value) = self.warning_max_num_seqs {
+            if value == 0 {
+                return Err("warning_max_num_seqs must be > 0".to_string());
+            }
+        }
+
+        if let Some(value) = &self.warning_quantization {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                self.warning_quantization = None;
+            } else {
+                self.warning_quantization = Some(trimmed.to_string());
             }
         }
 
@@ -273,6 +297,9 @@ fn parse_profile(contents: &str) -> Result<Profile, String> {
                 let model = parse_string(value)?;
                 profile.warning_model = if model.is_empty() { None } else { Some(model) };
             }
+            "warning_max_model_len" => profile.warning_max_model_len = Some(parse_u32(value)?),
+            "warning_max_num_seqs" => profile.warning_max_num_seqs = Some(parse_u32(value)?),
+            "warning_quantization" => profile.warning_quantization = Some(parse_string(value)?),
             "context_length" => profile.context_length = Some(parse_u64(value)?),
             "max_tokens" => profile.max_tokens = Some(parse_u32(value)?),
             "threads" => profile.threads = Some(parse_u32(value)?),

@@ -108,6 +108,9 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
     let mut warning_threads = None;
     let mut warning_gpu_layers = None;
     let mut warning_model = None;
+    let mut warning_max_model_len = None;
+    let mut warning_max_num_seqs = None;
+    let mut warning_quantization = None;
     let mut progress = false;
     let mut pressure_events = false;
     let mut dry_run = false;
@@ -214,6 +217,21 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
                     Some(parse_u32("--warning-gpu-layers", &next_value("--warning-gpu-layers", &mut iter)?)?)
             }
             "--warning-model" => warning_model = Some(next_value("--warning-model", &mut iter)?),
+            "--warning-max-model-len" => {
+                warning_max_model_len = Some(parse_nonzero_u32(
+                    "--warning-max-model-len",
+                    &next_value("--warning-max-model-len", &mut iter)?,
+                )?)
+            }
+            "--warning-max-num-seqs" => {
+                warning_max_num_seqs = Some(parse_nonzero_u32(
+                    "--warning-max-num-seqs",
+                    &next_value("--warning-max-num-seqs", &mut iter)?,
+                )?)
+            }
+            "--warning-quantization" => {
+                warning_quantization = Some(next_value("--warning-quantization", &mut iter)?)
+            }
             "--capture-output" => capture_output = true,
             "--progress" => progress = true,
             "--pressure-events" => pressure_events = true,
@@ -251,6 +269,15 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
         if warning_model.is_none() {
             warning_model = profile.warning_model.clone();
         }
+        if warning_max_model_len.is_none() {
+            warning_max_model_len = profile.warning_max_model_len;
+        }
+        if warning_max_num_seqs.is_none() {
+            warning_max_num_seqs = profile.warning_max_num_seqs;
+        }
+        if warning_quantization.is_none() {
+            warning_quantization = profile.warning_quantization.clone();
+        }
         profile.apply_to_run_config(&mut config)?;
     }
 
@@ -267,6 +294,13 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
         return Err(
             "vLLM-only flags used. Switch to --runtime vllm or remove vLLM settings.".to_string(),
         );
+    }
+    if runtime != "vllm"
+        && (warning_max_model_len.is_some()
+            || warning_max_num_seqs.is_some()
+            || warning_quantization.is_some())
+    {
+        return Err("vLLM warning flags used. Switch to --runtime vllm or remove warning vLLM settings.".to_string());
     }
     let backend: Box<dyn LLMRunner> = match runtime.as_str() {
         "llama.cpp" | "llama" => Box::new(LlamaCppBackend::default()),
@@ -309,6 +343,9 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             warning_threads,
             warning_gpu_layers,
             warning_model.as_deref(),
+            warning_max_model_len,
+            warning_max_num_seqs,
+            warning_quantization.as_deref(),
             progress,
             pressure_events,
         )
@@ -409,6 +446,9 @@ fn run_with_monitor(
     warning_threads: Option<u32>,
     warning_gpu_layers: Option<u32>,
     warning_model: Option<&str>,
+    warning_max_model_len: Option<u32>,
+    warning_max_num_seqs: Option<u32>,
+    warning_quantization: Option<&str>,
     progress: bool,
     pressure_events: bool,
 ) -> Result<(), String> {
@@ -460,6 +500,9 @@ fn run_with_monitor(
                     warning_threads,
                     warning_gpu_layers,
                     warning_model,
+                    warning_max_model_len,
+                    warning_max_num_seqs,
+                    warning_quantization.as_deref(),
                     &mut state,
                     &mut active_config,
                     backend.as_ref(),
@@ -492,6 +535,9 @@ fn run_with_monitor(
                         warning_threads,
                         warning_gpu_layers,
                         warning_model,
+                        warning_max_model_len,
+                        warning_max_num_seqs,
+                        warning_quantization.as_deref(),
                         &mut state,
                         &mut active_config,
                         backend.as_ref(),
@@ -680,6 +726,9 @@ fn handle_pressure_level(
     warning_threads: Option<u32>,
     warning_gpu_layers: Option<u32>,
     warning_model: Option<&str>,
+    warning_max_model_len: Option<u32>,
+    warning_max_num_seqs: Option<u32>,
+    warning_quantization: Option<&str>,
     state: &mut AdjustmentState,
     active_config: &mut RunConfig,
     backend: &dyn LLMRunner,
@@ -694,6 +743,7 @@ fn handle_pressure_level(
         let _ = child.kill();
         return Err("Aborted on critical memory pressure".to_string());
     }
+    let is_vllm = active_config.runtime == "vllm";
     if matches!(level, MemoryPressureLevel::Normal) {
         if let Some(baseline) = state.take_restore_config() {
             let _ = child.kill();
@@ -852,6 +902,78 @@ fn handle_pressure_level(
             }
         }
     }
+    if matches!(level, MemoryPressureLevel::Warning)
+        && is_vllm
+        && state.can_reduce_on_warning(false)
+        && warning_max_model_len.is_some()
+    {
+        let new_len = warning_max_model_len.unwrap_or(0);
+        if new_len > 0 && active_config.max_model_len != Some(new_len) {
+            state.record_baseline(active_config);
+            state.record_warning();
+            state.mark_adjusted();
+            let _ = child.kill();
+            join_output_threads(stdout_thread.take(), stderr_thread.take());
+            active_config.max_model_len = Some(new_len);
+            let spec = backend
+                .build_command(active_config)
+                .map_err(|err| err.to_string())?;
+            let spawned = spawn_child(&spec, capture_output, progress)?;
+            *child = spawned.0;
+            *stdout_thread = spawned.1;
+            *stderr_thread = spawned.2;
+        }
+    }
+    if matches!(level, MemoryPressureLevel::Warning)
+        && is_vllm
+        && state.can_reduce_on_warning(false)
+        && warning_max_num_seqs.is_some()
+    {
+        let new_seqs = warning_max_num_seqs.unwrap_or(0);
+        if new_seqs > 0 && active_config.max_num_seqs != Some(new_seqs) {
+            state.record_baseline(active_config);
+            state.record_warning();
+            state.mark_adjusted();
+            let _ = child.kill();
+            join_output_threads(stdout_thread.take(), stderr_thread.take());
+            active_config.max_num_seqs = Some(new_seqs);
+            let spec = backend
+                .build_command(active_config)
+                .map_err(|err| err.to_string())?;
+            let spawned = spawn_child(&spec, capture_output, progress)?;
+            *child = spawned.0;
+            *stdout_thread = spawned.1;
+            *stderr_thread = spawned.2;
+        }
+    }
+    if matches!(level, MemoryPressureLevel::Warning)
+        && is_vllm
+        && state.can_reduce_on_warning(false)
+        && warning_quantization.is_some()
+    {
+        let new_quant = warning_quantization.unwrap_or("").trim();
+        if !new_quant.is_empty()
+            && active_config
+                .quantization
+                .as_deref()
+                .unwrap_or_default()
+                != new_quant
+        {
+            state.record_baseline(active_config);
+            state.record_warning();
+            state.mark_adjusted();
+            let _ = child.kill();
+            join_output_threads(stdout_thread.take(), stderr_thread.take());
+            active_config.quantization = Some(new_quant.to_string());
+            let spec = backend
+                .build_command(active_config)
+                .map_err(|err| err.to_string())?;
+            let spawned = spawn_child(&spec, capture_output, progress)?;
+            *child = spawned.0;
+            *stdout_thread = spawned.1;
+            *stderr_thread = spawned.2;
+        }
+    }
     Ok(())
 }
 
@@ -961,6 +1083,9 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
+            None,
             &mut state,
             &mut config,
             &backend,
@@ -1010,6 +1135,9 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
+            None,
             &mut state,
             &mut config,
             &backend,
@@ -1028,6 +1156,9 @@ mod tests {
             None,
             Some(128),
             Some(512),
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -1081,6 +1212,9 @@ mod tests {
             None,
             None,
             Some("small.gguf"),
+            None,
+            None,
+            None,
             &mut state,
             &mut config,
             &backend,
@@ -1133,6 +1267,9 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
+            None,
             &mut state,
             &mut config,
             &backend,
@@ -1148,6 +1285,9 @@ mod tests {
         handle_pressure_level(
             MemoryPressureLevel::Normal,
             false,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -1204,6 +1344,9 @@ mod tests {
             None,
             None,
             Some("small.gguf"),
+            None,
+            None,
+            None,
             &mut state,
             &mut config,
             &backend,
@@ -1222,6 +1365,9 @@ mod tests {
         handle_pressure_level(
             MemoryPressureLevel::Normal,
             false,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -1281,6 +1427,9 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
+            None,
             &mut state,
             &mut config,
             &backend,
@@ -1296,6 +1445,9 @@ mod tests {
         handle_pressure_level(
             MemoryPressureLevel::Normal,
             false,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -1352,6 +1504,9 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
+            None,
             &mut state,
             &mut config,
             &backend,
@@ -1367,6 +1522,9 @@ mod tests {
         handle_pressure_level(
             MemoryPressureLevel::Normal,
             false,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -1390,6 +1548,9 @@ mod tests {
             MemoryPressureLevel::Warning,
             false,
             Some(512),
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -1438,6 +1599,9 @@ mod tests {
         let err = handle_pressure_level(
             MemoryPressureLevel::Critical,
             true,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -1524,6 +1688,12 @@ OPTIONS:
                        Restart with fewer GPU layers on warning
   --warning-model <path>
                        Restart with a different model on warning
+  --warning-max-model-len <n>
+                       vLLM lower max model length on warning
+  --warning-max-num-seqs <n>
+                       vLLM lower max sequences on warning
+  --warning-quantization <q>
+                       vLLM quantization on warning
   --capture-output      Capture and prefix stdout/stderr
   --progress            Detect progress lines (implies capture)
   --pressure-events     Use macOS memory pressure events
