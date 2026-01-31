@@ -343,6 +343,9 @@ pub fn handle(args: Vec<String>) -> Result<(), String> {
             warning_threads,
             warning_gpu_layers,
             warning_model.as_deref(),
+            warning_max_model_len,
+            warning_max_num_seqs,
+            warning_quantization.as_deref(),
             progress,
             pressure_events,
         )
@@ -443,6 +446,9 @@ fn run_with_monitor(
     warning_threads: Option<u32>,
     warning_gpu_layers: Option<u32>,
     warning_model: Option<&str>,
+    warning_max_model_len: Option<u32>,
+    warning_max_num_seqs: Option<u32>,
+    warning_quantization: Option<&str>,
     progress: bool,
     pressure_events: bool,
 ) -> Result<(), String> {
